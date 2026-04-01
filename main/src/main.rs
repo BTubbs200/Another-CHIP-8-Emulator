@@ -18,7 +18,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     // Temporary execution loop
-    for _ in 0..10 {
+    for _ in 0..rom_buffer.len() {
         cpu.step();
     }
 

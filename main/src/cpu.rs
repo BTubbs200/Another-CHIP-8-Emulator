@@ -1,3 +1,5 @@
+use rand::{RngExt, seq::index};
+
 const FONTSET: [u8; 80] = [
     0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
     0x20, 0x60, 0x20, 0x20, 0x70, // 1
@@ -187,7 +189,7 @@ impl Cpu {
                     // 8xy6: Set VF = least sig. bit of Vx, set Vx = Vx / 2
                     // FUTURE REFERENCE: some programs may break depending on how
                     // Vy is handled in this instruction. The current implementation ignores it.
-                    let (x, y) = Self::grab_xy(opcode);
+                    let x = Self::grab_x(opcode);
                     self.v_regs[0xF] = self.v_regs[x] & 0x1;
                     self.v_regs[x] >>= 1;
                 }
@@ -201,16 +203,120 @@ impl Cpu {
                 0x000E => {
                     // 8xyE: Set VF = most sig. bit of Vx, Vx = Vx * 2
                     // Again, Vy is unimplemented.
-                    let (x, y) = Self::grab_xy(opcode);
+                    let x = Self::grab_x(opcode);
                     self.v_regs[0xF] = self.v_regs[x] & 0x80;
                     self.v_regs[x] <<= 1;
                 }
                 _ => println!("Unrecognized 0x8xxx opcode! {:#X}", opcode),
             },
             0x9000 => {
-                //TODO
+                // 9xy0: Skip next instruction if Vx != Vy
+                let (x, y) = Self::grab_xy(opcode);
+                if self.v_regs[x] != self.v_regs[y] {
+                    self.pc_reg += 2;
+                }
             }
-            _ => println!("Unimplemented/unrecognized opcode! {:#X}", opcode),
+            0xA000 => {
+                // Annn: Set index = nnn
+                let addr = opcode & 0x0FFF;
+                self.index_reg = addr;
+            }
+            0xB000 => {
+                // Bnnn: Jump to location nnn + V0
+                let addr = opcode & 0x0FFF;
+                self.pc_reg = addr + self.v_regs[0] as u16;
+            }
+            0xC000 => {
+                // Cxkk: Set Vx = random byte AND kk
+                let (x, kk) = Self::grab_xkk(opcode);
+                let mut rng = rand::rng();
+                let rand: u8 = rng.random();
+                self.v_regs[x] = kk & rand;
+            }
+            0xD000 => {
+                // Dxyn: Display n-byte tall sprite at (Vx, Vy) starting at
+                // mem location I, set VF = collision
+                // TODO
+                println!("Unimplemented opcode: {:#X}", opcode);
+            }
+            0xE000 => match opcode & 0x000F {
+                0x000E => {
+                    // Ex9E: Skip next instruction if key with value Vx is pressed.
+                    // TODO
+                    println!("Unimplemented opcode: {:#X}", opcode);
+                }
+                0x0001 => {
+                    // ExA1: Skip next instruction if key with value Vx not pressed.
+                    // TODO
+                    println!("Unimplemented opcode: {:#X}", opcode);
+                }
+                _ => println!("Unrecognized 0xExxx opcode! {:#X}", opcode),
+            },
+            0xF000 => match opcode & 0x00FF {
+                0x0007 => {
+                    // Fx07: Set Vx = delay timer value
+                    let x = Self::grab_x(opcode);
+                    self.v_regs[x] = self.delayt_reg;
+                }
+                0x000A => {
+                    // Fx0A: Halt execution until key press, store val of key in Vx
+                    // TODO
+                    println!("Unimplemented opcode: {:#X}", opcode);
+                }
+                0x0015 => {
+                    // Fx15: Set delay timer = Vx
+                    let x = Self::grab_x(opcode);
+                    self.delayt_reg = self.v_regs[x];
+                }
+                0x0018 => {
+                    // Fx18: Set sound timer = Vx
+                    let x = Self::grab_x(opcode);
+                    self.soundt_reg = self.v_regs[x];
+                }
+                0x001E => {
+                    // Fx1E: Set index = index + Vx
+                    let x = Self::grab_x(opcode);
+                    self.index_reg += self.v_regs[x] as u16;
+                }
+                0x0029 => {
+                    // Fx29: Set index = location of sprite for digit Vx
+                    // TODO
+                    println!("Unimplemented opcode: {:#X}", opcode);
+                }
+                0x0033 => {
+                    // Fx33: Store BCD representation of Vx in index locations I, I+1, I+2
+                    let x = Self::grab_x(opcode);
+                    if (self.index_reg as usize) < self.memory.len() {
+                        let mut vx_dec = self.v_regs[x] as usize;
+                        let index_loc = self.index_reg as usize;
+                        for j in 0..=2 {
+                            let digit = vx_dec % 10;
+                            self.memory[index_loc + j] = digit as u8;
+                            vx_dec /= 10;
+                        }
+                    } else {
+                        panic!("Index out of bounds! {:#X}", opcode);
+                    }
+                }
+                0x0055 => {
+                    // Fx55: Store V0 - Vx regs in memory starting at index location
+                    let x = Self::grab_x(opcode);
+                    let index_loc = self.index_reg as usize;
+                    for j in 0..=x {
+                        self.memory[index_loc + j] = self.v_regs[j];
+                    }
+                }
+                0x0065 => {
+                    // Fx65: Read regs V0 - Vx from memory starting at index location
+                    let x = Self::grab_x(opcode);
+                    let index_loc = self.index_reg as usize;
+                    for j in 0..=x {
+                        self.v_regs[j] = self.memory[index_loc + j];
+                    }
+                }
+                _ => println!("Unrecognized 0xFxxx opcode! {:#X}", opcode),
+            },
+            _ => println!("Unrecognized opcode! {:#X}", opcode),
         }
     }
 
@@ -224,6 +330,11 @@ impl Cpu {
         let x = ((opcode & 0x0F00) >> 8) as usize;
         let y = ((opcode & 0x00F0) >> 4) as usize;
         (x, y)
+    }
+
+    fn grab_x(opcode: u16) -> usize {
+        let x = ((opcode & 0x0F00) >> 8) as usize;
+        x
     }
 
     pub fn load_rom(&mut self, rom_buffer: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
