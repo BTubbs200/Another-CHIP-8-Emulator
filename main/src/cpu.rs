@@ -72,7 +72,7 @@ impl Cpu {
     }
 
     fn fetch(&mut self) -> u16 {
-        // We take two 8-bit bytes from current position in
+        // Take two 8-bit bytes from current position in
         // memory and convert them into a single 16-bit opcode.
         let high = self.memory[self.pc_reg as usize] as u16;
         let low = self.memory[(self.pc_reg + 1) as usize] as u16;
@@ -82,22 +82,23 @@ impl Cpu {
         opcode
     }
 
+    // TODO: Address various edge cases, primarily wrapping and overflow
     fn execute(&mut self, opcode: u16) {
         match opcode & 0xF000 {
             0x0000 => match opcode {
                 0x00E0 => {
-                    // Clear display
+                    // 00E0: Clear display
                     self.display = [0; 64 * 32];
                 }
                 0x00EE => {
-                    // Return
+                    // 00EE: Return from subroutine
                     if self.sp_reg == 0 {
                         panic!("Stack underflow!");
                     }
                     self.sp_reg -= 1;
                     self.pc_reg = self.stack[self.sp_reg as usize];
                 }
-                _ => panic!("Encountered unknown opcode! {:#X}", opcode),
+                _ => println!("Encountered unknown 0x00Ex opcode! {:#X}", opcode),
             },
             0x1000 => {
                 // 1NNN: Jump to address NNN
@@ -141,8 +142,75 @@ impl Cpu {
                 let (x, kk) = Self::grab_xkk(opcode);
                 self.v_regs[x] = kk;
             }
-            // TODO: don't panic
-            _ => panic!("Encountered unimplemented opcode: {:#X}", opcode),
+            0x7000 => {
+                // 7xkk: Set Vx = Vx + kk
+                let (x, kk) = Self::grab_xkk(opcode);
+                self.v_regs[x] += kk;
+            }
+            0x8000 => match opcode & 0x000F {
+                0x0000 => {
+                    // 8xy0: Set Vx = Vy
+                    let (x, y) = Self::grab_xy(opcode);
+                    self.v_regs[x] = self.v_regs[y];
+                }
+                0x0001 => {
+                    // 8xy1: Set Vx = Vx OR Vy
+                    let (x, y) = Self::grab_xy(opcode);
+                    self.v_regs[x] = self.v_regs[x] | self.v_regs[y];
+                }
+                0x0002 => {
+                    // 8xy2: Set Vx = Vx AND Vy
+                    let (x, y) = Self::grab_xy(opcode);
+                    self.v_regs[x] = self.v_regs[x] & self.v_regs[y];
+                }
+                0x0003 => {
+                    // 8xy3: Set Vx = Vx XOR Vy
+                    let (x, y) = Self::grab_xy(opcode);
+                    self.v_regs[x] = self.v_regs[x] ^ self.v_regs[y];
+                }
+                0x0004 => {
+                    // 8xy4: Set Vx = Vx + Vy, set VF = carry,
+                    // only lowest 8 bits are stored in Vx
+                    let (x, y) = Self::grab_xy(opcode);
+                    let (sum, carry) = self.v_regs[x].overflowing_add(self.v_regs[y]);
+                    self.v_regs[x] = sum;
+                    self.v_regs[0xF] = if carry { 1 } else { 0 };
+                }
+                0x0005 => {
+                    // 8xy5: Set Vx = Vx - Vy, set VF = NOT borrow.
+                    let (x, y) = Self::grab_xy(opcode);
+                    let (result, borrow) = self.v_regs[x].overflowing_sub(self.v_regs[y]);
+                    self.v_regs[x] = result;
+                    self.v_regs[0xF] = if borrow { 0 } else { 1 };
+                }
+                0x0006 => {
+                    // 8xy6: Set VF = least sig. bit of Vx, set Vx = Vx / 2
+                    // FUTURE REFERENCE: some programs may break depending on how
+                    // Vy is handled in this instruction. The current implementation ignores it.
+                    let (x, y) = Self::grab_xy(opcode);
+                    self.v_regs[0xF] = self.v_regs[x] & 0x1;
+                    self.v_regs[x] >>= 1;
+                }
+                0x0007 => {
+                    // 8xy7: Set Vx = Vy - Vx, set VF = NOT borrow.
+                    let (x, y) = Self::grab_xy(opcode);
+                    let (result, borrow) = self.v_regs[y].overflowing_sub(self.v_regs[x]);
+                    self.v_regs[x] = result;
+                    self.v_regs[0xF] = if borrow { 0 } else { 1 };
+                }
+                0x000E => {
+                    // 8xyE: Set VF = most sig. bit of Vx, Vx = Vx * 2
+                    // Again, Vy is unimplemented.
+                    let (x, y) = Self::grab_xy(opcode);
+                    self.v_regs[0xF] = self.v_regs[x] & 0x80;
+                    self.v_regs[x] <<= 1;
+                }
+                _ => println!("Unrecognized 0x8xxx opcode! {:#X}", opcode),
+            },
+            0x9000 => {
+                //TODO
+            }
+            _ => println!("Unimplemented/unrecognized opcode! {:#X}", opcode),
         }
     }
 
@@ -150,6 +218,12 @@ impl Cpu {
         let x = ((opcode & 0x0F00) >> 8) as usize;
         let kk = (opcode & 0x00FF) as u8;
         (x, kk)
+    }
+
+    fn grab_xy(opcode: u16) -> (usize, usize) {
+        let x = ((opcode & 0x0F00) >> 8) as usize;
+        let y = ((opcode & 0x00F0) >> 4) as usize;
+        (x, y)
     }
 
     pub fn load_rom(&mut self, rom_buffer: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
