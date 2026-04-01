@@ -1,5 +1,3 @@
-use crate::cpu;
-
 const FONTSET: [u8; 80] = [
     0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
     0x20, 0x60, 0x20, 0x20, 0x70, // 1
@@ -61,6 +59,99 @@ impl Cpu {
         cpu
     }
 
+    pub fn step(&mut self) {
+        let opcode = self.fetch();
+        println!("fetched opcode: {:#X}", opcode);
+        self.execute(opcode);
+
+        // Bunch of debug stuff, remove later
+        println!("executed {:#X}", opcode);
+        println!("v_regs:\n{:#?}", self.v_regs);
+        println!("stack: {:#?}", self.stack);
+        println!("program counter: {:#X}", self.pc_reg);
+    }
+
+    fn fetch(&mut self) -> u16 {
+        // We take two 8-bit bytes from current position in
+        // memory and convert them into a single 16-bit opcode.
+        let high = self.memory[self.pc_reg as usize] as u16;
+        let low = self.memory[(self.pc_reg + 1) as usize] as u16;
+        let opcode = (high << 8) | low;
+
+        self.pc_reg += 2;
+        opcode
+    }
+
+    fn execute(&mut self, opcode: u16) {
+        match opcode & 0xF000 {
+            0x0000 => match opcode {
+                0x00E0 => {
+                    // Clear display
+                    self.display = [0; 64 * 32];
+                }
+                0x00EE => {
+                    // Return
+                    if self.sp_reg == 0 {
+                        panic!("Stack underflow!");
+                    }
+                    self.sp_reg -= 1;
+                    self.pc_reg = self.stack[self.sp_reg as usize];
+                }
+                _ => panic!("Encountered unknown opcode! {:#X}", opcode),
+            },
+            0x1000 => {
+                // 1NNN: Jump to address NNN
+                let addr = opcode & 0x0FFF;
+                self.pc_reg = addr;
+            }
+            0x2000 => {
+                // 2NNN: Call subroutine at NNN and jump
+                if self.sp_reg as usize <= self.stack.len() {
+                    panic!("Stack overflow!");
+                }
+                let addr = opcode & 0x0FFF;
+                self.sp_reg += 1;
+                self.stack[self.sp_reg as usize - 1] = self.pc_reg;
+                self.pc_reg = addr;
+            }
+            0x3000 => {
+                // 3XKK: Skip next instruction if Vx = kk
+                let (x, kk) = Self::grab_xkk(opcode);
+                if self.v_regs[x] == kk {
+                    self.pc_reg += 2;
+                }
+            }
+            0x4000 => {
+                // 4XKK: Skip next instruction if Vx != kk
+                let (x, kk) = Self::grab_xkk(opcode);
+                if self.v_regs[x] != kk {
+                    self.pc_reg += 2;
+                }
+            }
+            0x5000 => {
+                // 5xy0: Skip next instruction if Vx = Vy
+                let x = ((opcode & 0x0F00) >> 8) as usize;
+                let y = ((opcode & 0x00F0) >> 4) as usize;
+                if self.v_regs[x] == self.v_regs[y] {
+                    self.pc_reg += 2;
+                }
+            }
+            0x6000 => {
+                // 6xkk: Set Vx = kk
+                let (x, kk) = Self::grab_xkk(opcode);
+                self.v_regs[x] = kk;
+            }
+            // TODO: don't panic
+            _ => panic!("Encountered unimplemented opcode: {:#X}", opcode),
+        }
+    }
+
+    fn grab_xkk(opcode: u16) -> (usize, u8) {
+        let x = ((opcode & 0x0F00) >> 8) as usize;
+        let kk = (opcode & 0x00FF) as u8;
+        (x, kk)
+    }
+
     pub fn load_rom(&mut self, rom_buffer: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
         let rom_size = rom_buffer.len();
 
@@ -73,7 +164,7 @@ impl Cpu {
             .into());
         }
 
-        // Load ROM into memory starting at address 512
+        // Load ROM into memory starting at 0x200
         self.memory[512..512 + rom_size].copy_from_slice(rom_buffer);
         Ok(())
     }

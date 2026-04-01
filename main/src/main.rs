@@ -16,7 +16,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         rom_buffer.len(),
         rom_buffer
     );
-    println!("CPU: {:#?}", cpu);
+
+    // Temporary execution loop
+    for _ in 0..10 {
+        cpu.step();
+    }
 
     Ok(())
 }
