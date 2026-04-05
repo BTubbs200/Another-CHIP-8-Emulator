@@ -1,4 +1,4 @@
-use rand::{RngExt, seq::index};
+use rand::RngExt;
 
 const FONTSET: [u8; 80] = [
     0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
@@ -23,6 +23,7 @@ const FONTSET: [u8; 80] = [
 pub struct Cpu {
     memory: [u8; 4096],
     display: [u8; 64 * 32],
+    draw_flag: bool,
 
     v_regs: [u8; 16], // 16 8-bit V registers 0-F
     index_reg: u16,
@@ -38,6 +39,7 @@ impl Default for Cpu {
         Self {
             memory: [0; 4096],
             display: [0; 64 * 32],
+            draw_flag: false,
             v_regs: [0; 16],
             index_reg: 0,
             pc_reg: 0x200, // Start at address 512
@@ -68,9 +70,11 @@ impl Cpu {
 
         // Bunch of debug stuff, remove later
         println!("executed {:#X}", opcode);
+        /*
         println!("v_regs:\n{:#?}", self.v_regs);
         println!("stack: {:#?}", self.stack);
         println!("program counter: {:#X}", self.pc_reg);
+        */
     }
 
     fn fetch(&mut self) -> u16 {
@@ -189,6 +193,7 @@ impl Cpu {
                     // 8xy6: Set VF = least sig. bit of Vx, set Vx = Vx / 2
                     // FUTURE REFERENCE: some programs may break depending on how
                     // Vy is handled in this instruction. The current implementation ignores it.
+                    // Add a user option to configure between using or ignoring y.
                     let x = Self::grab_x(opcode);
                     self.v_regs[0xF] = self.v_regs[x] & 0x1;
                     self.v_regs[x] >>= 1;
@@ -236,8 +241,42 @@ impl Cpu {
             0xD000 => {
                 // Dxyn: Display n-byte tall sprite at (Vx, Vy) starting at
                 // mem location I, set VF = collision
-                // TODO
-                println!("Unimplemented opcode: {:#X}", opcode);
+                let (x, y) = Self::grab_xy(opcode);
+                let base = self.index_reg as usize;
+                let sprite_height = (opcode & 0x000F) as usize;
+                let x_coord = (self.v_regs[x] & 63) as usize;
+                let y_coord = (self.v_regs[y] & 31) as usize;
+
+                self.v_regs[0xF] = 0;
+
+                for row in 0..sprite_height {
+                    let y = y_coord + row;
+                    if y >= 32 {
+                        break;
+                    }
+
+                    let sprite_byte = self.memory[base + row];
+
+                    for col in 0..8 {
+                        let x = x_coord + col;
+                        if x >= 64 {
+                            break;
+                        }
+
+                        let pixel = (sprite_byte >> (7 - col)) & 1;
+                        if pixel == 0 {
+                            continue;
+                        }
+
+                        let mem_index = y * 64 + x;
+                        if self.display[mem_index] == 1 {
+                            self.v_regs[0xF] = 1;
+                        }
+                        self.display[mem_index] ^= 1;
+                    }
+                }
+
+                self.draw_flag = true;
             }
             0xE000 => match opcode & 0x000F {
                 0x000E => {
@@ -280,8 +319,10 @@ impl Cpu {
                 }
                 0x0029 => {
                     // Fx29: Set index = location of sprite for digit Vx
-                    // TODO
-                    println!("Unimplemented opcode: {:#X}", opcode);
+                    let x = Self::grab_x(opcode);
+                    let digit = self.v_regs[x] as u16;
+                    // 0x50 because font set starts there, * 5 because each char is 5 bytes.
+                    self.index_reg = 0x50 + (digit * 5);
                 }
                 0x0033 => {
                     // Fx33: Store BCD representation of Vx in index locations I, I+1, I+2
