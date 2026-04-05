@@ -1,4 +1,6 @@
 use rand::RngExt;
+use sdl3::pixels::Color;
+use sdl3::rect::Rect;
 
 const FONTSET: [u8; 80] = [
     0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
@@ -61,6 +63,28 @@ impl Cpu {
         cpu.memory[0x50..0x50 + FONTSET.len()].copy_from_slice(&FONTSET);
 
         cpu
+    }
+
+    pub fn render(&mut self, canvas: &mut sdl3::render::Canvas<sdl3::video::Window>) {
+        if !self.draw_flag {
+            return;
+        }
+
+        canvas.set_draw_color(Color::BLACK);
+        canvas.clear();
+
+        for y in 0..32 {
+            for x in 0..64 {
+                let index = y * 64 + x;
+                if self.display[index] == 1 {
+                    canvas.set_draw_color(Color::WHITE);
+                    let _ = canvas.fill_rect(Rect::new(x as i32 * 10, y as i32 * 10, 10, 10));
+                }
+            }
+        }
+
+        canvas.present();
+        self.draw_flag = false;
     }
 
     pub fn step(&mut self) {
