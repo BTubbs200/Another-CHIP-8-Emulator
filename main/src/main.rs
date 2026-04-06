@@ -12,6 +12,25 @@ const SCREEN_WIDTH: u32 = 64;
 const SCREEN_HEIGHT: u32 = 32;
 const SCALE: u32 = 10; // Make window larger, each pixel becomes 10x10 window pixels
 
+const KEYMAP: [Keycode; 16] = [
+    Keycode::X,
+    Keycode::_1,
+    Keycode::_2,
+    Keycode::_3,
+    Keycode::Q,
+    Keycode::W,
+    Keycode::E,
+    Keycode::A,
+    Keycode::S,
+    Keycode::D,
+    Keycode::Z,
+    Keycode::C,
+    Keycode::_4,
+    Keycode::R,
+    Keycode::F,
+    Keycode::V,
+];
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let rom_buffer = parse_args(env::args().collect());
 
@@ -53,9 +72,22 @@ fn program_loop(
         match event {
             Event::Quit { .. } => return false,
             Event::KeyDown {
-                keycode: Some(Keycode::Escape),
-                ..
-            } => return false,
+                keycode: Some(key), ..
+            } => {
+                if let Some(index) = KEYMAP.iter().position(|&k| k == key) {
+                    cpu.keys[index] = true;
+                }
+                if key == Keycode::Escape {
+                    return false;
+                }
+            }
+            Event::KeyUp {
+                keycode: Some(key), ..
+            } => {
+                if let Some(index) = KEYMAP.iter().position(|&k| k == key) {
+                    cpu.keys[index] = false;
+                }
+            }
             _ => {}
         }
     }

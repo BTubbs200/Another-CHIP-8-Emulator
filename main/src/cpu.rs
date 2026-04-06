@@ -23,6 +23,7 @@ const FONTSET: [u8; 80] = [
 
 #[derive(Debug)]
 pub struct Cpu {
+    pub keys: [bool; 16],
     memory: [u8; 4096],
     display: [u8; 64 * 32],
     draw_flag: bool,
@@ -39,6 +40,7 @@ pub struct Cpu {
 impl Default for Cpu {
     fn default() -> Self {
         Self {
+            keys: [false; 16],
             memory: [0; 4096],
             display: [0; 64 * 32],
             draw_flag: false,
@@ -112,6 +114,10 @@ impl Cpu {
         opcode
     }
 
+    /// Instrucion specifications referenced from:
+    /// Cowgod's "Chip-8 Technical Reference v1.0": http://devernay.free.fr/hacks/chip8/C8TECH10.HTM#0.0
+    /// Tvil's "Guide to making a CHIP-8 emulator": https://tobiasvl.github.io/blog/write-a-chip-8-emulator/
+
     // TODO: Address various edge cases, primarily wrapping and overflow
     fn execute(&mut self, opcode: u16) {
         match opcode & 0xF000 {
@@ -137,7 +143,7 @@ impl Cpu {
             }
             0x2000 => {
                 // 2NNN: Call subroutine at NNN and jump
-                if self.sp_reg as usize <= self.stack.len() {
+                if self.sp_reg as usize >= self.stack.len() {
                     panic!("Stack overflow!");
                 }
                 let addr = opcode & 0x0FFF;
@@ -146,6 +152,7 @@ impl Cpu {
                 self.pc_reg = addr;
             }
             0x3000 => {
+                // NN or KK, that is the question! We will do KK in accordance with Cowgod's reference.
                 // 3XKK: Skip next instruction if Vx = kk
                 let (x, kk) = Self::grab_xkk(opcode);
                 if self.v_regs[x] == kk {
@@ -175,7 +182,7 @@ impl Cpu {
             0x7000 => {
                 // 7xkk: Set Vx = Vx + kk
                 let (x, kk) = Self::grab_xkk(opcode);
-                self.v_regs[x] += kk;
+                self.v_regs[x] = self.v_regs[x].wrapping_add(kk);
             }
             0x8000 => match opcode & 0x000F {
                 0x0000 => {
@@ -215,9 +222,9 @@ impl Cpu {
                 }
                 0x0006 => {
                     // 8xy6: Set VF = least sig. bit of Vx, set Vx = Vx / 2
-                    // FUTURE REFERENCE: some programs may break depending on how
+                    // TODO: Some programs may break depending on how
                     // Vy is handled in this instruction. The current implementation ignores it.
-                    // Add a user option to configure between using or ignoring y.
+                    // Add an arg to configure between using or ignoring Vy for complete compatibility.
                     let x = Self::grab_x(opcode);
                     self.v_regs[0xF] = self.v_regs[x] & 0x1;
                     self.v_regs[x] >>= 1;
@@ -270,7 +277,6 @@ impl Cpu {
                 let sprite_height = (opcode & 0x000F) as usize;
                 let x_coord = (self.v_regs[x] & 63) as usize;
                 let y_coord = (self.v_regs[y] & 31) as usize;
-
                 self.v_regs[0xF] = 0;
 
                 for row in 0..sprite_height {
@@ -305,13 +311,17 @@ impl Cpu {
             0xE000 => match opcode & 0x000F {
                 0x000E => {
                     // Ex9E: Skip next instruction if key with value Vx is pressed.
-                    // TODO
-                    println!("Unimplemented opcode: {:#X}", opcode);
+                    let x = Self::grab_x(opcode);
+                    if self.keys[self.v_regs[x] as usize] == true {
+                        self.pc_reg += 2;
+                    }
                 }
                 0x0001 => {
                     // ExA1: Skip next instruction if key with value Vx not pressed.
-                    // TODO
-                    println!("Unimplemented opcode: {:#X}", opcode);
+                    let x = Self::grab_x(opcode);
+                    if self.keys[self.v_regs[x] as usize] == false {
+                        self.pc_reg += 2;
+                    }
                 }
                 _ => println!("Unrecognized 0xExxx opcode! {:#X}", opcode),
             },
@@ -323,8 +333,22 @@ impl Cpu {
                 }
                 0x000A => {
                     // Fx0A: Halt execution until key press, store val of key in Vx
-                    // TODO
-                    println!("Unimplemented opcode: {:#X}", opcode);
+                    // TODO: Implement timer functionality to make this accurate. Currently
+                    // fails "FXOA GETKEY" in 6-keypad.ch8.
+                    let x = Self::grab_x(opcode);
+                    let mut key_pressed = false;
+
+                    for (i, &pressed) in self.keys.iter().enumerate() {
+                        if pressed {
+                            key_pressed = true;
+                            self.v_regs[x] = i as u8;
+                            break;
+                        }
+                    }
+
+                    if !key_pressed {
+                        self.pc_reg -= 2;
+                    }
                 }
                 0x0015 => {
                     // Fx15: Set delay timer = Vx
@@ -353,10 +377,11 @@ impl Cpu {
                     let x = Self::grab_x(opcode);
                     if (self.index_reg as usize) < self.memory.len() {
                         let mut vx_dec = self.v_regs[x] as usize;
-                        let index_loc = self.index_reg as usize;
-                        for j in 0..=2 {
-                            let digit = vx_dec % 10;
-                            self.memory[index_loc + j] = digit as u8;
+                        let i = self.index_reg as usize;
+
+                        // Pull digits, hundreds -> tens -> ones
+                        for j in (0..=2).rev() {
+                            self.memory[i + j] = (vx_dec % 10) as u8;
                             vx_dec /= 10;
                         }
                     } else {
@@ -367,6 +392,7 @@ impl Cpu {
                     // Fx55: Store V0 - Vx regs in memory starting at index location
                     let x = Self::grab_x(opcode);
                     let index_loc = self.index_reg as usize;
+
                     for j in 0..=x {
                         self.memory[index_loc + j] = self.v_regs[j];
                     }
@@ -375,6 +401,7 @@ impl Cpu {
                     // Fx65: Read regs V0 - Vx from memory starting at index location
                     let x = Self::grab_x(opcode);
                     let index_loc = self.index_reg as usize;
+
                     for j in 0..=x {
                         self.v_regs[j] = self.memory[index_loc + j];
                     }

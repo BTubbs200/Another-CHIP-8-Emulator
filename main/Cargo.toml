@@ -5,4 +5,12 @@ edition = "2024"
 
 [dependencies]
 rand = "0.10.0"
-sdl3 = { version = "0", features = ["build-from-source"] }
+# TODO: Document build options for sdl3 in readme:
+# cargo build: builds sdl3 from source
+# cargo build --no-default-features --features system-sdl: use system installed sdl3
+sdl3 = { version = "0", optional = true }
+
+[features]
+default = ["bundled-sdl"]
+bundled-sdl = ["sdl3/build-from-source"]
+system-sdl = ["sdl3"]
