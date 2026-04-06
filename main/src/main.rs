@@ -1,3 +1,4 @@
+mod audio;
 mod cpu;
 
 use cpu::Cpu;
@@ -34,12 +35,9 @@ const KEYMAP: [Keycode; 16] = [
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let rom_buffer = parse_args(env::args().collect());
 
-    let mut cpu = Cpu::new();
-    cpu.load_rom(&rom_buffer)?;
-
-    // ATTEMPT AT VIDEO INITIALIZATION //
     let sdl_context = sdl3::init()?;
     let vid_subsys = sdl_context.video()?;
+    let audio_subsys = sdl_context.audio().unwrap();
 
     let window = vid_subsys
         .window(
@@ -54,7 +52,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut canvas = window.into_canvas();
     let mut event_pump = sdl_context.event_pump()?;
 
+    let mut cpu = Cpu::new();
+    cpu.load_rom(&rom_buffer)?;
     println!("Successfully read {} bytes from ROM", rom_buffer.len());
+
+    let mut audio_stream = audio::init_audio_stream(&audio_subsys);
 
     let mut last_timer_update = Instant::now();
     let mut last_cpu_update = Instant::now();
@@ -65,6 +67,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         &mut last_timer_update,
         &mut last_cpu_update,
         &mut cpu,
+        &mut audio_stream,
     ) {}
 
     Ok(())
@@ -76,6 +79,7 @@ fn program_loop(
     last_timer_update: &mut Instant,
     last_cpu_update: &mut Instant,
     cpu: &mut Cpu,
+    audio_stream: &mut sdl3::audio::AudioStreamWithCallback<audio::SquareWave>,
 ) -> bool {
     // Event handlers
     for event in pump.poll_iter() {
@@ -126,6 +130,11 @@ fn program_loop(
         }
 
         *last_timer_update += timer_interval;
+    }
+
+    // AUDIO
+    if let Some(mut audio) = audio_stream.lock() {
+        audio.set_playing(cpu.soundt_reg > 0);
     }
 
     cpu.render(canvas);
