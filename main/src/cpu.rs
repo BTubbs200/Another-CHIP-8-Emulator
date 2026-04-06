@@ -24,6 +24,9 @@ const FONTSET: [u8; 80] = [
 #[derive(Debug)]
 pub struct Cpu {
     pub keys: [bool; 16],
+    pub waiting_for_key: Option<u8>,
+    pub waiting_for_key_release: Option<u8>,
+
     memory: [u8; 4096],
     display: [u8; 64 * 32],
     draw_flag: bool,
@@ -33,14 +36,18 @@ pub struct Cpu {
     pc_reg: u16,
     stack: [u16; 16],
     sp_reg: u8,
-    delayt_reg: u8,
-    soundt_reg: u8,
+    // TODO: maybe don't make these public?
+    pub delayt_reg: u8,
+    pub soundt_reg: u8,
 }
 
 impl Default for Cpu {
     fn default() -> Self {
         Self {
             keys: [false; 16],
+            waiting_for_key: None,
+            waiting_for_key_release: None,
+
             memory: [0; 4096],
             display: [0; 64 * 32],
             draw_flag: false,
@@ -60,13 +67,29 @@ impl Cpu {
         let mut cpu = Self {
             ..Default::default()
         };
-
         // Store fontset into memory starting at 0x50
         cpu.memory[0x50..0x50 + FONTSET.len()].copy_from_slice(&FONTSET);
 
         cpu
     }
 
+    pub fn on_key_press(&mut self, key: u8) {
+        if let Some(reg) = self.waiting_for_key {
+            self.v_regs[reg as usize] = key;
+            self.waiting_for_key = None;
+            self.waiting_for_key_release = Some(key); // Require key release before proceeding
+        }
+    }
+
+    pub fn on_key_release(&mut self, key: u8) {
+        if let Some(waiting_key) = self.waiting_for_key_release {
+            if waiting_key == key {
+                self.waiting_for_key_release = None;
+            }
+        }
+    }
+
+    // TODO: move this to its own display file because it's not really the CPU's job.
     pub fn render(&mut self, canvas: &mut sdl3::render::Canvas<sdl3::video::Window>) {
         if !self.draw_flag {
             return;
@@ -90,8 +113,10 @@ impl Cpu {
     }
 
     pub fn step(&mut self) {
+        if self.waiting_for_key.is_some() || self.waiting_for_key_release.is_some() {
+            return; // Halt execution while waiting for key input and release (FX0A)
+        }
         let opcode = self.fetch();
-        println!("fetched opcode: {:#X}", opcode);
         self.execute(opcode);
 
         // Bunch of debug stuff, remove later
@@ -336,19 +361,7 @@ impl Cpu {
                     // TODO: Implement timer functionality to make this accurate. Currently
                     // fails "FXOA GETKEY" in 6-keypad.ch8.
                     let x = Self::grab_x(opcode);
-                    let mut key_pressed = false;
-
-                    for (i, &pressed) in self.keys.iter().enumerate() {
-                        if pressed {
-                            key_pressed = true;
-                            self.v_regs[x] = i as u8;
-                            break;
-                        }
-                    }
-
-                    if !key_pressed {
-                        self.pc_reg -= 2;
-                    }
+                    self.waiting_for_key = Some(x as u8);
                 }
                 0x0015 => {
                     // Fx15: Set delay timer = Vx

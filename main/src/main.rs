@@ -6,7 +6,7 @@ use sdl3::keyboard::Keycode;
 use std::env;
 use std::fs::File;
 use std::io::Read;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 const SCREEN_WIDTH: u32 = 64;
 const SCREEN_HEIGHT: u32 = 32;
@@ -56,8 +56,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Successfully read {} bytes from ROM", rom_buffer.len());
 
-    // Temporary execution loop
-    while program_loop(&mut canvas, &mut event_pump, &mut cpu) {}
+    let mut last_timer_update = Instant::now();
+    let mut last_cpu_update = Instant::now();
+
+    while program_loop(
+        &mut canvas,
+        &mut event_pump,
+        &mut last_timer_update,
+        &mut last_cpu_update,
+        &mut cpu,
+    ) {}
 
     Ok(())
 }
@@ -65,6 +73,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 fn program_loop(
     canvas: &mut sdl3::render::Canvas<sdl3::video::Window>,
     pump: &mut sdl3::EventPump,
+    last_timer_update: &mut Instant,
+    last_cpu_update: &mut Instant,
     cpu: &mut Cpu,
 ) -> bool {
     // Event handlers
@@ -75,6 +85,9 @@ fn program_loop(
                 keycode: Some(key), ..
             } => {
                 if let Some(index) = KEYMAP.iter().position(|&k| k == key) {
+                    if !cpu.keys[index] {
+                        cpu.on_key_press(index as u8);
+                    }
                     cpu.keys[index] = true;
                 }
                 if key == Keycode::Escape {
@@ -86,18 +99,38 @@ fn program_loop(
             } => {
                 if let Some(index) = KEYMAP.iter().position(|&k| k == key) {
                     cpu.keys[index] = false;
+                    cpu.on_key_release(index as u8);
                 }
             }
             _ => {}
         }
     }
 
-    // Run CPU instructions
-    cpu.step();
+    // CPU (600Hz)
+    let cpu_interval = Duration::from_secs_f64(1.0 / 600.0);
+    while last_cpu_update.elapsed() >= cpu_interval {
+        // Run CPU instructions
+        cpu.step();
+        *last_cpu_update += cpu_interval;
+    }
+
+    // TIMERS (60 Hz)
+    let timer_interval = Duration::from_secs_f64(1.0 / 60.0);
+    while last_timer_update.elapsed() >= timer_interval {
+        if cpu.delayt_reg > 0 {
+            cpu.delayt_reg -= 1;
+        }
+
+        if cpu.soundt_reg > 0 {
+            cpu.soundt_reg -= 1;
+        }
+
+        *last_timer_update += timer_interval;
+    }
+
     cpu.render(canvas);
 
-    // TODO: Implement accurate CPU timing logic
-    ::std::thread::sleep(Duration::from_millis(2));
+    std::thread::sleep(Duration::from_millis(1)); // Prevent weird user CPU usage
 
     true
 }
