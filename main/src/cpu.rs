@@ -1,8 +1,6 @@
 use crate::framebuffer::FrameBuffer;
 
 use rand::RngExt;
-use sdl3::pixels::Color;
-use sdl3::rect::Rect;
 
 const FONTSET: [u8; 80] = [
     0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
@@ -30,8 +28,6 @@ pub struct Cpu {
     pub waiting_for_key_release: Option<u8>,
 
     memory: [u8; 4096],
-    // display: [u8; 64 * 32],
-    // pub draw_flag: bool,
     v_regs: [u8; 16], // 16 8-bit V registers 0-F
     index_reg: u16,
     pc_reg: u16,
@@ -50,8 +46,6 @@ impl Default for Cpu {
             waiting_for_key_release: None,
 
             memory: [0; 4096],
-            //display: [0; 64 * 32],
-            // draw_flag: false,
             v_regs: [0; 16],
             index_reg: 0,
             pc_reg: 0x200, // Start at address 512
@@ -89,33 +83,6 @@ impl Cpu {
                 self.waiting_for_key_release = None;
             }
         }
-    }
-
-    // TODO: move this to its own display file because it's not really the CPU's job.
-    pub fn render(
-        &mut self,
-        framebuffer: &mut FrameBuffer,
-        canvas: &mut sdl3::render::Canvas<sdl3::video::Window>,
-    ) {
-        if !framebuffer.draw_flag {
-            return;
-        }
-
-        canvas.set_draw_color(Color::BLACK);
-        canvas.clear();
-
-        for y in 0..32 {
-            for x in 0..64 {
-                let index = y * 64 + x;
-                if framebuffer.buffer[index] == 1 {
-                    canvas.set_draw_color(Color::WHITE);
-                    let _ = canvas.fill_rect(Rect::new(x as i32 * 10, y as i32 * 10, 10, 10));
-                }
-            }
-        }
-
-        canvas.present();
-        framebuffer.draw_flag = false;
     }
 
     pub fn step(&mut self, framebuffer: &mut FrameBuffer) {

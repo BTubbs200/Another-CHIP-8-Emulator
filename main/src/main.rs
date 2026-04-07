@@ -12,11 +12,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::framebuffer::FrameBuffer;
-
-const SCREEN_WIDTH: u32 = 64;
-const SCREEN_HEIGHT: u32 = 32;
-const SCALE: u32 = 10; // Make window larger, each pixel becomes 10x10 window pixels
+use crate::{display::SDLCreate, framebuffer::FrameBuffer};
 
 const KEYMAP: [Keycode; 16] = [
     Keycode::X,
@@ -40,36 +36,36 @@ const KEYMAP: [Keycode; 16] = [
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let rom_buffer = parse_args(env::args().collect());
 
-    let sdl_context = sdl3::init()?;
-    let vid_subsys = sdl_context.video()?;
-    let audio_subsys = sdl_context.audio().unwrap();
+    let mut sdl_display = SDLCreate::init_display()?;
+    /*  let sdl_context = sdl3::init()?;
+        let vid_subsys = sdl_context.video()?;
+        let audio_subsys = sdl_context.audio().unwrap();
 
-    let window = vid_subsys
-        .window(
-            "Chip-8 Emulator",
-            SCREEN_WIDTH * SCALE,
-            SCREEN_HEIGHT * SCALE,
-        )
-        .position_centered()
-        .build()
-        .map_err(|e| e.to_string())?;
+        let window = vid_subsys
+            .window(
+                "Chip-8 Emulator",
+                SCREEN_WIDTH * SCALE,
+                SCREEN_HEIGHT * SCALE,
+            )
+            .position_centered()
+            .build()
+            .map_err(|e| e.to_string())?;
 
-    let mut canvas = window.into_canvas();
-    let mut event_pump = sdl_context.event_pump()?;
-
+        let mut canvas = window.into_canvas();
+        let mut event_pump = sdl_context.event_pump()?;
+    */
     let mut cpu = Cpu::new();
-    let mut framebuffer = FrameBuffer::new();
     cpu.load_rom(&rom_buffer)?;
     println!("Successfully read {} bytes from ROM", rom_buffer.len());
 
-    let mut audio_stream = audio::init_audio_stream(&audio_subsys);
+    let mut audio_stream = audio::init_audio_stream(sdl_display.audio_subsystem());
+    let mut framebuffer = FrameBuffer::new();
 
     let mut last_timer_update = Instant::now();
     let mut last_cpu_update = Instant::now();
 
     while program_loop(
-        &mut canvas,
-        &mut event_pump,
+        &mut sdl_display,
         &mut last_timer_update,
         &mut last_cpu_update,
         &mut cpu,
@@ -81,8 +77,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn program_loop(
-    canvas: &mut sdl3::render::Canvas<sdl3::video::Window>,
-    pump: &mut sdl3::EventPump,
+    sdl_display: &mut SDLCreate,
     last_timer_update: &mut Instant,
     last_cpu_update: &mut Instant,
     cpu: &mut Cpu,
@@ -90,7 +85,7 @@ fn program_loop(
     audio_stream: &mut sdl3::audio::AudioStreamWithCallback<audio::SquareWave>,
 ) -> bool {
     // Event handlers
-    for event in pump.poll_iter() {
+    for event in sdl_display.event_pump().poll_iter() {
         match event {
             Event::Quit { .. } => return false,
             Event::KeyDown {
@@ -146,7 +141,8 @@ fn program_loop(
     }
 
     // RENDER
-    cpu.render(framebuffer, canvas);
+    sdl_display.render(framebuffer);
+    //cpu.render(framebuffer, sdl_display.canvas());
 
     std::thread::sleep(Duration::from_millis(1)); // Prevent weird user CPU usage
 
