@@ -1,13 +1,18 @@
 mod audio;
 mod cpu;
+mod display;
+mod framebuffer;
 
 use cpu::Cpu;
-use sdl3::event::Event;
-use sdl3::keyboard::Keycode;
-use std::env;
-use std::fs::File;
-use std::io::Read;
-use std::time::{Duration, Instant};
+use sdl3::{event::Event, keyboard::Keycode};
+use std::{
+    env,
+    fs::File,
+    io::Read,
+    time::{Duration, Instant},
+};
+
+use crate::framebuffer::FrameBuffer;
 
 const SCREEN_WIDTH: u32 = 64;
 const SCREEN_HEIGHT: u32 = 32;
@@ -53,6 +58,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut event_pump = sdl_context.event_pump()?;
 
     let mut cpu = Cpu::new();
+    let mut framebuffer = FrameBuffer::new();
     cpu.load_rom(&rom_buffer)?;
     println!("Successfully read {} bytes from ROM", rom_buffer.len());
 
@@ -67,6 +73,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         &mut last_timer_update,
         &mut last_cpu_update,
         &mut cpu,
+        &mut framebuffer,
         &mut audio_stream,
     ) {}
 
@@ -79,6 +86,7 @@ fn program_loop(
     last_timer_update: &mut Instant,
     last_cpu_update: &mut Instant,
     cpu: &mut Cpu,
+    framebuffer: &mut FrameBuffer,
     audio_stream: &mut sdl3::audio::AudioStreamWithCallback<audio::SquareWave>,
 ) -> bool {
     // Event handlers
@@ -114,7 +122,7 @@ fn program_loop(
     let cpu_interval = Duration::from_secs_f64(1.0 / 600.0);
     while last_cpu_update.elapsed() >= cpu_interval {
         // Run CPU instructions
-        cpu.step();
+        cpu.step(framebuffer);
         *last_cpu_update += cpu_interval;
     }
 
@@ -137,7 +145,8 @@ fn program_loop(
         audio.set_playing(cpu.soundt_reg > 0);
     }
 
-    cpu.render(canvas);
+    // RENDER
+    cpu.render(framebuffer, canvas);
 
     std::thread::sleep(Duration::from_millis(1)); // Prevent weird user CPU usage
 

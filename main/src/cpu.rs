@@ -1,3 +1,5 @@
+use crate::framebuffer::FrameBuffer;
+
 use rand::RngExt;
 use sdl3::pixels::Color;
 use sdl3::rect::Rect;
@@ -28,9 +30,8 @@ pub struct Cpu {
     pub waiting_for_key_release: Option<u8>,
 
     memory: [u8; 4096],
-    display: [u8; 64 * 32],
-    draw_flag: bool,
-
+    // display: [u8; 64 * 32],
+    // pub draw_flag: bool,
     v_regs: [u8; 16], // 16 8-bit V registers 0-F
     index_reg: u16,
     pc_reg: u16,
@@ -49,8 +50,8 @@ impl Default for Cpu {
             waiting_for_key_release: None,
 
             memory: [0; 4096],
-            display: [0; 64 * 32],
-            draw_flag: false,
+            //display: [0; 64 * 32],
+            // draw_flag: false,
             v_regs: [0; 16],
             index_reg: 0,
             pc_reg: 0x200, // Start at address 512
@@ -67,6 +68,7 @@ impl Cpu {
         let mut cpu = Self {
             ..Default::default()
         };
+
         // Store fontset into memory starting at 0x50
         cpu.memory[0x50..0x50 + FONTSET.len()].copy_from_slice(&FONTSET);
 
@@ -90,8 +92,12 @@ impl Cpu {
     }
 
     // TODO: move this to its own display file because it's not really the CPU's job.
-    pub fn render(&mut self, canvas: &mut sdl3::render::Canvas<sdl3::video::Window>) {
-        if !self.draw_flag {
+    pub fn render(
+        &mut self,
+        framebuffer: &mut FrameBuffer,
+        canvas: &mut sdl3::render::Canvas<sdl3::video::Window>,
+    ) {
+        if !framebuffer.draw_flag {
             return;
         }
 
@@ -101,7 +107,7 @@ impl Cpu {
         for y in 0..32 {
             for x in 0..64 {
                 let index = y * 64 + x;
-                if self.display[index] == 1 {
+                if framebuffer.buffer[index] == 1 {
                     canvas.set_draw_color(Color::WHITE);
                     let _ = canvas.fill_rect(Rect::new(x as i32 * 10, y as i32 * 10, 10, 10));
                 }
@@ -109,15 +115,15 @@ impl Cpu {
         }
 
         canvas.present();
-        self.draw_flag = false;
+        framebuffer.draw_flag = false;
     }
 
-    pub fn step(&mut self) {
+    pub fn step(&mut self, framebuffer: &mut FrameBuffer) {
         if self.waiting_for_key.is_some() || self.waiting_for_key_release.is_some() {
             return; // Halt execution while waiting for key input and release (FX0A)
         }
         let opcode = self.fetch();
-        self.execute(opcode);
+        self.execute(opcode, framebuffer);
 
         // Bunch of debug stuff, remove later
         println!("executed {:#X}", opcode);
@@ -144,12 +150,12 @@ impl Cpu {
     /// Tvil's "Guide to making a CHIP-8 emulator": https://tobiasvl.github.io/blog/write-a-chip-8-emulator/
 
     // TODO: Address various edge cases, primarily wrapping and overflow
-    fn execute(&mut self, opcode: u16) {
+    fn execute(&mut self, opcode: u16, framebuffer: &mut FrameBuffer) {
         match opcode & 0xF000 {
             0x0000 => match opcode {
                 0x00E0 => {
                     // 00E0: Clear display
-                    self.display = [0; 64 * 32];
+                    framebuffer.clear();
                 }
                 0x00EE => {
                     // 00EE: Return from subroutine
@@ -298,40 +304,25 @@ impl Cpu {
                 // Dxyn: Display n-byte tall sprite at (Vx, Vy) starting at
                 // mem location I, set VF = collision
                 let (x, y) = Self::grab_xy(opcode);
-                let base = self.index_reg as usize;
-                let sprite_height = (opcode & 0x000F) as usize;
                 let x_coord = (self.v_regs[x] & 63) as usize;
                 let y_coord = (self.v_regs[y] & 31) as usize;
+                let base = self.index_reg as usize;
+                let sprite_height = (opcode & 0x000F) as usize;
                 self.v_regs[0xF] = 0;
 
                 for row in 0..sprite_height {
-                    let y = y_coord + row;
-                    if y >= 32 {
-                        break;
-                    }
-
                     let sprite_byte = self.memory[base + row];
-
                     for col in 0..8 {
-                        let x = x_coord + col;
-                        if x >= 64 {
-                            break;
-                        }
-
                         let pixel = (sprite_byte >> (7 - col)) & 1;
                         if pixel == 0 {
                             continue;
                         }
 
-                        let mem_index = y * 64 + x;
-                        if self.display[mem_index] == 1 {
+                        if framebuffer.set_pixel(x_coord + col, y_coord + row, pixel) {
                             self.v_regs[0xF] = 1;
                         }
-                        self.display[mem_index] ^= 1;
                     }
                 }
-
-                self.draw_flag = true;
             }
             0xE000 => match opcode & 0x000F {
                 0x000E => {
@@ -358,8 +349,6 @@ impl Cpu {
                 }
                 0x000A => {
                     // Fx0A: Halt execution until key press, store val of key in Vx
-                    // TODO: Implement timer functionality to make this accurate. Currently
-                    // fails "FXOA GETKEY" in 6-keypad.ch8.
                     let x = Self::grab_x(opcode);
                     self.waiting_for_key = Some(x as u8);
                 }
