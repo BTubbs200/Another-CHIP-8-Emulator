@@ -3,12 +3,13 @@ mod cpu;
 mod display;
 mod framebuffer;
 
+use clap::Parser;
 use cpu::Cpu;
 use sdl3::{event::Event, keyboard::Keycode};
 use std::{
-    env,
     fs::File,
     io::Read,
+    path::Path,
     time::{Duration, Instant},
 };
 
@@ -33,27 +34,56 @@ const KEYMAP: [Keycode; 16] = [
     Keycode::V,
 ];
 
+#[derive(Parser, Debug)]
+#[command(name = "ch8")]
+#[command(about = "A CHIP-8 emulator")]
+struct Args {
+    //TODO
+    #[arg(long, default_value_t = false)]
+    vsync: bool,
+
+    //TODO
+    #[arg(long, default_value_t = 50)]
+    volume: u8,
+
+    //TODO
+    #[arg(short, long, default_value_t = 600)]
+    frequency: u32,
+
+    // TODO
+    #[arg(short, long, default_value_t = false)]
+    log: bool,
+
+    //TODO
+    #[arg(long, default_value_t = 800)]
+    width: u32,
+
+    //TODO
+    #[arg(long, default_value_t = 600)]
+    height: u32,
+
+    //TODO
+    #[arg(required = true, value_name = "Path to ROM")]
+    rom: String,
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let rom_buffer = parse_args(env::args().collect());
+    let args = Args::parse();
+    //println!("{:?}", args);
+
+    let rom_path = Path::new(&args.rom);
+    if !rom_path.exists() {
+        eprintln!("ROM path does not exist");
+        std::process::exit(1);
+    } else if !rom_path.is_file() {
+        eprintln!("ROM path is not a file");
+        std::process::exit(1);
+    }
+
+    let rom_buffer = parse_rom(args.rom);
 
     let mut sdl_display = SDLCreate::init_display()?;
-    /*  let sdl_context = sdl3::init()?;
-        let vid_subsys = sdl_context.video()?;
-        let audio_subsys = sdl_context.audio().unwrap();
 
-        let window = vid_subsys
-            .window(
-                "Chip-8 Emulator",
-                SCREEN_WIDTH * SCALE,
-                SCREEN_HEIGHT * SCALE,
-            )
-            .position_centered()
-            .build()
-            .map_err(|e| e.to_string())?;
-
-        let mut canvas = window.into_canvas();
-        let mut event_pump = sdl_context.event_pump()?;
-    */
     let mut cpu = Cpu::new();
     cpu.load_rom(&rom_buffer)?;
     println!("Successfully read {} bytes from ROM", rom_buffer.len());
@@ -84,7 +114,6 @@ fn program_loop(
     framebuffer: &mut FrameBuffer,
     audio_stream: &mut sdl3::audio::AudioStreamWithCallback<audio::SquareWave>,
 ) -> bool {
-    // Event handlers
     for event in sdl_display.event_pump().poll_iter() {
         match event {
             Event::Quit { .. } => return false,
@@ -113,15 +142,12 @@ fn program_loop(
         }
     }
 
-    // CPU (600Hz)
     let cpu_interval = Duration::from_secs_f64(1.0 / 600.0);
     while last_cpu_update.elapsed() >= cpu_interval {
-        // Run CPU instructions
         cpu.step(framebuffer);
         *last_cpu_update += cpu_interval;
     }
 
-    // TIMERS (60 Hz)
     let timer_interval = Duration::from_secs_f64(1.0 / 60.0);
     while last_timer_update.elapsed() >= timer_interval {
         if cpu.delayt_reg > 0 {
@@ -135,30 +161,19 @@ fn program_loop(
         *last_timer_update += timer_interval;
     }
 
-    // AUDIO
     if let Some(mut audio) = audio_stream.lock() {
         audio.set_playing(cpu.soundt_reg > 0);
     }
 
-    // RENDER
     sdl_display.render(framebuffer);
-    //cpu.render(framebuffer, sdl_display.canvas());
 
-    std::thread::sleep(Duration::from_millis(1)); // Prevent weird user CPU usage
+    std::thread::sleep(Duration::from_millis(1)); // Help prevent weird user CPU spikes
 
     true
 }
 
-// TODO: make sure args[1] is actually a file path
-// TODO: more robust ability to implement multiple args as needed
-fn parse_args(args: Vec<String>) -> Vec<u8> {
-    if args.len() != 2 {
-        eprintln!("Usage: {} <file_path>", args[0]);
-        std::process::exit(1);
-    }
-
-    let path = &args[1];
-    let mut file = File::open(&path).expect(&format!("Couldn't open {}", path));
+fn parse_rom(arg: String) -> Vec<u8> {
+    let mut file = File::open(&arg).expect(&format!("Couldn't open {}", arg));
     let mut rom_buffer = Vec::new();
 
     file.read_to_end(&mut rom_buffer)

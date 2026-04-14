@@ -23,6 +23,8 @@ const FONTSET: [u8; 80] = [
 
 #[derive(Debug)]
 pub struct Cpu {
+    // TODO: Move keypad functionality into its own file, though the
+    // waiting fields can remain as CPU functionality.
     pub keys: [bool; 16],
     pub waiting_for_key: Option<u8>,
     pub waiting_for_key_release: Option<u8>,
@@ -33,7 +35,7 @@ pub struct Cpu {
     pc_reg: u16,
     stack: [u16; 16],
     sp_reg: u8,
-    // TODO: maybe don't make these public?
+    // TODO: Create access methods for these instead of making them public.
     pub delayt_reg: u8,
     pub soundt_reg: u8,
 }
@@ -166,8 +168,7 @@ impl Cpu {
             }
             0x5000 => {
                 // 5xy0: Skip next instruction if Vx = Vy
-                let x = ((opcode & 0x0F00) >> 8) as usize;
-                let y = ((opcode & 0x00F0) >> 4) as usize;
+                let (x, y) = Self::grab_xy(opcode);
                 if self.v_regs[x] == self.v_regs[y] {
                     self.pc_reg += 2;
                 }
@@ -398,6 +399,7 @@ impl Cpu {
         x
     }
 
+    // TODO: Consider if this should be CPU functionality or its own thing.
     pub fn load_rom(&mut self, rom_buffer: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
         let rom_size = rom_buffer.len();
 
