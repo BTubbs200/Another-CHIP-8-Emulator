@@ -38,38 +38,44 @@ const KEYMAP: [Keycode; 16] = [
 #[command(name = "ch8")]
 #[command(about = "A CHIP-8 emulator")]
 struct Args {
+    /*
     //TODO
+    /// Enable vertical sync (may help with screen tearing in certain applications)
     #[arg(long, default_value_t = false)]
     vsync: bool,
 
     //TODO
+    /// 0-100
     #[arg(long, default_value_t = 50)]
     volume: u8,
 
     //TODO
+    /// Set clock frequency in Hz. Will alter speed of program.
     #[arg(short, long, default_value_t = 600)]
     frequency: u32,
 
     // TODO
+    /// Enable output logging
     #[arg(short, long, default_value_t = false)]
     log: bool,
 
     //TODO
+    /// Window width
     #[arg(long, default_value_t = 800)]
     width: u32,
 
     //TODO
+    /// Window height
     #[arg(long, default_value_t = 600)]
     height: u32,
+    */
 
-    //TODO
     #[arg(required = true, value_name = "Path to ROM")]
     rom: String,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
-    //println!("{:?}", args);
 
     let rom_path = Path::new(&args.rom);
     if !rom_path.exists() {
