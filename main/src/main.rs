@@ -5,7 +5,7 @@ mod framebuffer;
 
 use clap::Parser;
 use cpu::Cpu;
-use sdl3::{event::Event, keyboard::Keycode};
+use sdl2::{audio::AudioDevice, event::Event, keyboard::Keycode};
 use std::{
     fs::File,
     io::Read,
@@ -13,13 +13,13 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::{display::SDLCreate, framebuffer::FrameBuffer};
+use crate::{display::SDLContext, framebuffer::FrameBuffer};
 
 const KEYMAP: [Keycode; 16] = [
     Keycode::X,
-    Keycode::_1,
-    Keycode::_2,
-    Keycode::_3,
+    Keycode::NUM_1,
+    Keycode::NUM_2,
+    Keycode::NUM_3,
     Keycode::Q,
     Keycode::W,
     Keycode::E,
@@ -28,7 +28,7 @@ const KEYMAP: [Keycode; 16] = [
     Keycode::D,
     Keycode::Z,
     Keycode::C,
-    Keycode::_4,
+    Keycode::NUM_4,
     Keycode::R,
     Keycode::F,
     Keycode::V,
@@ -40,18 +40,18 @@ const KEYMAP: [Keycode; 16] = [
 struct Args {
     /*
     //TODO
-    /// Enable vertical sync (may help with screen tearing in certain applications)
+    /// Enable vertical sync (may help with screen tearing in certain programs)
     #[arg(long, default_value_t = false)]
     vsync: bool,
 
     //TODO
     /// 0-100
-    #[arg(long, default_value_t = 50)]
+    #[arg(long, default_value_t = 50, value_parser = clap::value_parser!(u32).range(0..=100))]
     volume: u8,
 
     //TODO
-    /// Set clock frequency in Hz. Will alter speed of program.
-    #[arg(short, long, default_value_t = 600)]
+    /// Set clock frequency in Hz. 1-1000.
+    #[arg(short, long, default_value_t = 600, value_parser = clap::value_parser!(u32).range(1..=1000))]
     frequency: u32,
 
     // TODO
@@ -60,16 +60,20 @@ struct Args {
     log: bool,
 
     //TODO
-    /// Window width
-    #[arg(long, default_value_t = 800)]
+    /// Window width in px. 10-1920
+    #[arg(long, default_value_t = 800, value_parser = clap::value_parser!(u32).range(10..=1920))]
     width: u32,
 
     //TODO
-    /// Window height
-    #[arg(long, default_value_t = 600)]
+    /// Window height in px. 10-1080
+    #[arg(long, default_value_t = 600, value_parser = clap::value_parser!(u32).range(1..=1080))]
     height: u32,
-    */
 
+    //TODO
+    /// Addresses an ambiguous instruction. Try enabling if certain programs aren't behaving quite correctly.
+    #[arg(long, default_value_t = false)]
+    vy: bool,
+    */
     #[arg(required = true, value_name = "Path to ROM")]
     rom: String,
 }
@@ -88,13 +92,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let rom_buffer = parse_rom(args.rom);
 
-    let mut sdl_display = SDLCreate::init_display()?;
+    let mut sdl_display = SDLContext::new()?;
 
     let mut cpu = Cpu::new();
     cpu.load_rom(&rom_buffer)?;
     println!("Successfully read {} bytes from ROM", rom_buffer.len());
 
-    let mut audio_stream = audio::init_audio_stream(sdl_display.audio_subsystem());
+    let mut audio_device = audio::init_audio_device(sdl_display.audio());
     let mut framebuffer = FrameBuffer::new();
 
     let mut last_timer_update = Instant::now();
@@ -106,21 +110,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         &mut last_cpu_update,
         &mut cpu,
         &mut framebuffer,
-        &mut audio_stream,
+        &mut audio_device,
     ) {}
 
     Ok(())
 }
 
 fn program_loop(
-    sdl_display: &mut SDLCreate,
+    sdl_display: &mut SDLContext,
     last_timer_update: &mut Instant,
     last_cpu_update: &mut Instant,
     cpu: &mut Cpu,
     framebuffer: &mut FrameBuffer,
-    audio_stream: &mut sdl3::audio::AudioStreamWithCallback<audio::SquareWave>,
+    audio_device: &mut AudioDevice<audio::SquareWave>,
 ) -> bool {
-    for event in sdl_display.event_pump().poll_iter() {
+    for event in sdl_display.events().poll_iter() {
         match event {
             Event::Quit { .. } => return false,
             Event::KeyDown {
@@ -148,7 +152,8 @@ fn program_loop(
         }
     }
 
-    let cpu_interval = Duration::from_secs_f64(1.0 / 600.0);
+    // PROGRAM EXECUTION
+    let cpu_interval = Duration::from_secs_f64(1.0 / 600.0); // 600 Hz
     while last_cpu_update.elapsed() >= cpu_interval {
         cpu.step(framebuffer);
         *last_cpu_update += cpu_interval;
@@ -167,11 +172,13 @@ fn program_loop(
         *last_timer_update += timer_interval;
     }
 
-    if let Some(mut audio) = audio_stream.lock() {
-        audio.set_playing(cpu.soundt_reg > 0);
-    }
+    // AUDIO
+    let mut audio = audio_device.lock();
+    audio.set_playing(cpu.soundt_reg > 0);
 
+    // RENDER
     sdl_display.render(framebuffer);
+    framebuffer.draw_flag = false;
 
     std::thread::sleep(Duration::from_millis(1)); // Help prevent weird user CPU spikes
 
