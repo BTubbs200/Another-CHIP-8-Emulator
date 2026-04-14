@@ -1,4 +1,6 @@
-use sdl3::audio::{AudioCallback, AudioSpec, AudioStreamWithCallback};
+//FIXME: Sounds only playing intermittently!
+
+use sdl2::audio::{AudioCallback, AudioDevice, AudioSpecDesired};
 
 pub struct SquareWave {
     phase_inc: f32,
@@ -13,50 +15,43 @@ impl SquareWave {
     }
 }
 
-impl AudioCallback<f32> for SquareWave {
-    fn callback(&mut self, stream: &mut sdl3::audio::AudioStream, requested: i32) {
-        let mut buffer = Vec::<f32>::with_capacity(requested as usize);
+impl AudioCallback for SquareWave {
+    type Channel = f32;
 
-        for _ in 0..requested {
+    fn callback(&mut self, out: &mut [f32]) {
+        for sample in out.iter_mut() {
             if self.playing {
-                let sample = if self.phase <= 0.5 {
+                *sample = if self.phase <= 0.5 {
                     self.volume
                 } else {
                     -self.volume
                 };
-                buffer.push(sample);
             } else {
-                buffer.push(0.0)
+                *sample = 0.0;
             }
+
             self.phase = (self.phase + self.phase_inc) % 1.0;
         }
-        stream.put_data_f32(&buffer);
     }
 }
 
-pub fn init_audio_stream(
-    audio_subsystem: &sdl3::AudioSubsystem,
-) -> AudioStreamWithCallback<SquareWave> {
-    let spec = AudioSpec {
+pub fn init_audio_device(audio_subsystem: &sdl2::AudioSubsystem) -> AudioDevice<SquareWave> {
+    let desired_spec = AudioSpecDesired {
         freq: Some(44100),
         channels: Some(1),
-        format: Some(sdl3::audio::AudioFormat::f32_sys()),
+        samples: None,
     };
 
-    let stream = audio_subsystem
-        .open_playback_stream(
-            &spec,
-            SquareWave {
-                phase_inc: 440.0 / 44100.0,
-                phase: 0.0,
-                volume: 0.05,
-                playing: false,
-            },
-        )
+    let device = audio_subsystem
+        .open_playback(None, &desired_spec, |spec| SquareWave {
+            phase_inc: 440.0 / spec.freq as f32,
+            phase: 0.0,
+            volume: 0.05,
+            playing: false,
+        })
         .unwrap();
 
     // Start playback
-    stream.resume().unwrap();
-
-    stream
+    device.resume();
+    device
 }

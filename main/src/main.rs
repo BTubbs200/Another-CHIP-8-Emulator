@@ -5,7 +5,7 @@ mod framebuffer;
 
 use clap::Parser;
 use cpu::Cpu;
-use sdl3::{event::Event, keyboard::Keycode};
+use sdl2::{event::Event, keyboard::Keycode};
 use std::{
     fs::File,
     io::Read,
@@ -13,13 +13,13 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::{display::SDLCreate, framebuffer::FrameBuffer};
+use crate::{display::SDLContext, framebuffer::FrameBuffer};
 
 const KEYMAP: [Keycode; 16] = [
     Keycode::X,
-    Keycode::_1,
-    Keycode::_2,
-    Keycode::_3,
+    Keycode::NUM_1,
+    Keycode::NUM_2,
+    Keycode::NUM_3,
     Keycode::Q,
     Keycode::W,
     Keycode::E,
@@ -28,7 +28,7 @@ const KEYMAP: [Keycode; 16] = [
     Keycode::D,
     Keycode::Z,
     Keycode::C,
-    Keycode::_4,
+    Keycode::NUM_4,
     Keycode::R,
     Keycode::F,
     Keycode::V,
@@ -69,7 +69,6 @@ struct Args {
     #[arg(long, default_value_t = 600)]
     height: u32,
     */
-
     #[arg(required = true, value_name = "Path to ROM")]
     rom: String,
 }
@@ -88,13 +87,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let rom_buffer = parse_rom(args.rom);
 
-    let mut sdl_display = SDLCreate::init_display()?;
+    let mut sdl_display = SDLContext::new()?;
 
     let mut cpu = Cpu::new();
     cpu.load_rom(&rom_buffer)?;
     println!("Successfully read {} bytes from ROM", rom_buffer.len());
 
-    let mut audio_stream = audio::init_audio_stream(sdl_display.audio_subsystem());
+    let mut audio_device = audio::init_audio_device(sdl_display.audio());
     let mut framebuffer = FrameBuffer::new();
 
     let mut last_timer_update = Instant::now();
@@ -106,21 +105,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         &mut last_cpu_update,
         &mut cpu,
         &mut framebuffer,
-        &mut audio_stream,
+        &mut audio_device,
     ) {}
 
     Ok(())
 }
 
 fn program_loop(
-    sdl_display: &mut SDLCreate,
+    sdl_display: &mut SDLContext,
     last_timer_update: &mut Instant,
     last_cpu_update: &mut Instant,
     cpu: &mut Cpu,
     framebuffer: &mut FrameBuffer,
-    audio_stream: &mut sdl3::audio::AudioStreamWithCallback<audio::SquareWave>,
+    audio_device: &mut sdl2::audio::AudioDevice<audio::SquareWave>,
 ) -> bool {
-    for event in sdl_display.event_pump().poll_iter() {
+    for event in sdl_display.events().poll_iter() {
         match event {
             Event::Quit { .. } => return false,
             Event::KeyDown {
@@ -148,6 +147,7 @@ fn program_loop(
         }
     }
 
+    // PROGRAM EXECUTION
     let cpu_interval = Duration::from_secs_f64(1.0 / 600.0);
     while last_cpu_update.elapsed() >= cpu_interval {
         cpu.step(framebuffer);
@@ -167,11 +167,13 @@ fn program_loop(
         *last_timer_update += timer_interval;
     }
 
-    if let Some(mut audio) = audio_stream.lock() {
-        audio.set_playing(cpu.soundt_reg > 0);
-    }
+    // AUDIO
+    let mut audio = audio_device.lock();
+    audio.set_playing(cpu.soundt_reg > 0);
 
+    // RENDER
     sdl_display.render(framebuffer);
+    framebuffer.draw_flag = false;
 
     std::thread::sleep(Duration::from_millis(1)); // Help prevent weird user CPU spikes
 

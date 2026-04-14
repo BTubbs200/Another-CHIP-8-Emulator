@@ -1,7 +1,8 @@
 use crate::framebuffer::FrameBuffer;
 
-use sdl3::{
-    AudioSubsystem, EventPump, VideoSubsystem, pixels::Color, rect::Rect, render::WindowCanvas,
+use sdl2::{
+    AudioSubsystem, EventPump, VideoSubsystem, pixels::Color, rect::Rect, render::Canvas,
+    video::Window,
 };
 use std::error::Error;
 
@@ -9,16 +10,49 @@ const SCREEN_WIDTH: u32 = 64;
 const SCREEN_HEIGHT: u32 = 32;
 const SCALE: u32 = 10; // Make window larger, each pixel becomes 10x10 window pixels
 
-pub struct SDLCreate {
-    vid_subsys: VideoSubsystem,
-    aud_subsys: AudioSubsystem,
-    canvas: WindowCanvas,
+pub struct SDLContext {
+    video: VideoSubsystem,
+    audio: AudioSubsystem,
+    canvas: Canvas<Window>,
     event_pump: EventPump,
 }
 
-impl SDLCreate {
+impl SDLContext {
+    pub fn new() -> Result<Self, Box<dyn Error>> {
+        let sdl = sdl2::init()?;
+
+        let video = sdl.video()?;
+        let audio = sdl.audio()?;
+        let event_pump = sdl.event_pump()?;
+
+        let window = video
+            .window(
+                "Chip-8 Emulator",
+                SCREEN_WIDTH * SCALE,
+                SCREEN_HEIGHT * SCALE,
+            )
+            .position_centered()
+            .build()
+            .map_err(|e| e.to_string())?;
+
+        let canvas = window
+            .into_canvas()
+            // TODO: toggle vsync
+            .present_vsync()
+            .build()
+            .map_err(|e| e.to_string())?;
+
+        Ok(Self {
+            video,
+            audio,
+            canvas,
+            event_pump,
+        })
+    }
+
+    /*
     pub fn init_display() -> Result<Self, Box<dyn Error>> {
-        let sdl_context = sdl3::init()?;
+        let sdl_context = sdl2::init()?;
         let video_subsys = sdl_context.video()?;
         let audio_subsys = sdl_context.audio().unwrap();
 
@@ -42,36 +76,40 @@ impl SDLCreate {
             event_pump,
         })
     }
+    */
 
-    pub fn render(&mut self, framebuffer: &mut FrameBuffer) {
+    pub fn render(&mut self, framebuffer: &FrameBuffer) {
         if !framebuffer.draw_flag {
             return;
         }
 
         self.canvas.set_draw_color(Color::BLACK);
         self.canvas.clear();
+        self.canvas.set_draw_color(Color::WHITE);
 
-        for y in 0..32 {
-            for x in 0..64 {
-                let index = y * 64 + x;
-                if framebuffer.buffer[index] == 1 {
-                    self.canvas.set_draw_color(Color::WHITE);
-                    let _ = self
-                        .canvas
-                        .fill_rect(Rect::new(x as i32 * 10, y as i32 * 10, 10, 10));
+        for y in 0..SCREEN_HEIGHT {
+            for x in 0..SCREEN_WIDTH {
+                let index = (y * SCREEN_WIDTH + x) as usize;
+
+                if framebuffer.buffer[index] != 0 {
+                    let _ = self.canvas.fill_rect(Rect::new(
+                        (x * SCALE) as i32,
+                        (y * SCALE) as i32,
+                        SCALE,
+                        SCALE,
+                    ));
                 }
             }
         }
 
         self.canvas.present();
-        framebuffer.draw_flag = false;
     }
 
-    pub fn audio_subsystem(&self) -> &AudioSubsystem {
-        &self.aud_subsys
+    pub fn audio(&self) -> &AudioSubsystem {
+        &self.audio
     }
 
-    pub fn event_pump(&mut self) -> &mut EventPump {
+    pub fn events(&mut self) -> &mut EventPump {
         &mut self.event_pump
     }
 }
