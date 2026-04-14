@@ -5,7 +5,7 @@ mod framebuffer;
 
 use clap::Parser;
 use cpu::Cpu;
-use sdl2::{event::Event, keyboard::Keycode};
+use sdl2::{audio::AudioDevice, event::Event, keyboard::Keycode};
 use std::{
     fs::File,
     io::Read,
@@ -40,18 +40,18 @@ const KEYMAP: [Keycode; 16] = [
 struct Args {
     /*
     //TODO
-    /// Enable vertical sync (may help with screen tearing in certain applications)
+    /// Enable vertical sync (may help with screen tearing in certain programs)
     #[arg(long, default_value_t = false)]
     vsync: bool,
 
     //TODO
     /// 0-100
-    #[arg(long, default_value_t = 50)]
+    #[arg(long, default_value_t = 50, value_parser = clap::value_parser!(u32).range(0..=100))]
     volume: u8,
 
     //TODO
-    /// Set clock frequency in Hz. Will alter speed of program.
-    #[arg(short, long, default_value_t = 600)]
+    /// Set clock frequency in Hz. 1-1000.
+    #[arg(short, long, default_value_t = 600, value_parser = clap::value_parser!(u32).range(1..=1000))]
     frequency: u32,
 
     // TODO
@@ -60,14 +60,19 @@ struct Args {
     log: bool,
 
     //TODO
-    /// Window width
-    #[arg(long, default_value_t = 800)]
+    /// Window width in px. 10-1920
+    #[arg(long, default_value_t = 800, value_parser = clap::value_parser!(u32).range(10..=1920))]
     width: u32,
 
     //TODO
-    /// Window height
-    #[arg(long, default_value_t = 600)]
+    /// Window height in px. 10-1080
+    #[arg(long, default_value_t = 600, value_parser = clap::value_parser!(u32).range(1..=1080))]
     height: u32,
+
+    //TODO
+    /// Addresses an ambiguous instruction. Try enabling if certain programs aren't behaving quite correctly.
+    #[arg(long, default_value_t = false)]
+    vy: bool,
     */
     #[arg(required = true, value_name = "Path to ROM")]
     rom: String,
@@ -117,7 +122,7 @@ fn program_loop(
     last_cpu_update: &mut Instant,
     cpu: &mut Cpu,
     framebuffer: &mut FrameBuffer,
-    audio_device: &mut sdl2::audio::AudioDevice<audio::SquareWave>,
+    audio_device: &mut AudioDevice<audio::SquareWave>,
 ) -> bool {
     for event in sdl_display.events().poll_iter() {
         match event {
@@ -148,7 +153,7 @@ fn program_loop(
     }
 
     // PROGRAM EXECUTION
-    let cpu_interval = Duration::from_secs_f64(1.0 / 600.0);
+    let cpu_interval = Duration::from_secs_f64(1.0 / 600.0); // 600 Hz
     while last_cpu_update.elapsed() >= cpu_interval {
         cpu.step(framebuffer);
         *last_cpu_update += cpu_interval;

@@ -102,7 +102,7 @@ impl SDLContext {
             }
         }
 
-        self.canvas.present();
+        self.canvas.present()
     }
 
     pub fn audio(&self) -> &AudioSubsystem {
