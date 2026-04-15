@@ -87,12 +87,12 @@ impl Cpu {
         }
     }
 
-    pub fn step(&mut self, framebuffer: &mut FrameBuffer) {
+    pub fn step(&mut self, framebuffer: &mut FrameBuffer, vy: bool) {
         if self.waiting_for_key.is_some() || self.waiting_for_key_release.is_some() {
             return; // Halt execution while waiting for key input and release (FX0A)
         }
         let opcode = self.fetch();
-        self.execute(opcode, framebuffer);
+        self.execute(opcode, framebuffer, vy);
 
         // Bunch of debug stuff, remove later
         println!("executed {:#X}", opcode);
@@ -119,7 +119,7 @@ impl Cpu {
     /// Tvil's "Guide to making a CHIP-8 emulator": https://tobiasvl.github.io/blog/write-a-chip-8-emulator/
 
     // TODO: Address various edge cases, primarily wrapping and overflow
-    fn execute(&mut self, opcode: u16, framebuffer: &mut FrameBuffer) {
+    fn execute(&mut self, opcode: u16, framebuffer: &mut FrameBuffer, vy: bool) {
         match opcode & 0xF000 {
             0x0000 => match opcode {
                 0x00E0 => {
@@ -219,14 +219,20 @@ impl Cpu {
                     self.v_regs[x] = result;
                     self.v_regs[0xF] = if borrow { 0 } else { 1 };
                 }
+                /// Due to ambiguity, Some programs may break depending on how
+                /// Vy is handled in 8xy6 and 8xyE. This program allows the user to specify
+                /// how Vy is handled, thus allowing for full program compatibility.
                 0x0006 => {
-                    // 8xy6: Set VF = least sig. bit of Vx, set Vx = Vx / 2
-                    // TODO: Some programs may break depending on how
-                    // Vy is handled in this instruction. The current implementation ignores it.
-                    // Add an arg to configure between using or ignoring Vy for complete compatibility.
+                    // 8xy6: Optionally set Vx = Vy, set VF = least sig. bit of Vx, Vx = Vx / 2
                     let x = Self::grab_x(opcode);
-                    self.v_regs[0xF] = self.v_regs[x] & 0x1;
+                    // Toggle use of Vy reg in ambiguous instruction
+                    if vy {
+                        let y = ((opcode & 0x00F0) >> 4) as usize;
+                        self.v_regs[x] = self.v_regs[y]
+                    }
+                    let least_sig_bit = self.v_regs[x] & 0x1;
                     self.v_regs[x] >>= 1;
+                    self.v_regs[0xF] = least_sig_bit;
                 }
                 0x0007 => {
                     // 8xy7: Set Vx = Vy - Vx, set VF = NOT borrow.
@@ -236,11 +242,16 @@ impl Cpu {
                     self.v_regs[0xF] = if borrow { 0 } else { 1 };
                 }
                 0x000E => {
-                    // 8xyE: Set VF = most sig. bit of Vx, Vx = Vx * 2
-                    // Again, Vy is unimplemented.
+                    // 8xyE: Optionally set Vx = Vy, set VF = most sig. bit of Vx, Vx = Vx * 2
                     let x = Self::grab_x(opcode);
-                    self.v_regs[0xF] = self.v_regs[x] & 0x80;
+                    // Toggle use of Vy reg in ambiguous instruction
+                    if vy {
+                        let y = ((opcode & 0x00F0) >> 4) as usize;
+                        self.v_regs[x] = self.v_regs[y]
+                    }
+                    let most_sig_bit = (self.v_regs[x] & 0x80) >> 7;
                     self.v_regs[x] <<= 1;
+                    self.v_regs[0xF] = most_sig_bit;
                 }
                 _ => println!("Unrecognized 0x8xxx opcode! {:#X}", opcode),
             },

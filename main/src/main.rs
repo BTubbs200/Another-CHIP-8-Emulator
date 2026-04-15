@@ -48,12 +48,11 @@ struct Args {
     /// Enable output logging
     #[arg(short, long, default_value_t = false)]
     log: bool,
-
-    //TODO
-    /// Addresses an ambiguous instruction. Try enabling if certain programs aren't behaving quite correctly.
-    #[arg(long, default_value_t = false)]
-    vy: bool,
     */
+    /// Addresses an ambiguous instruction. Try disabling if certain programs aren't behaving correctly.
+    #[arg(long, default_value_t = true)]
+    vy: bool,
+
     /// Enable vertical sync (may help with display issues in certain programs)
     #[arg(long, default_value_t = false)]
     vsync: bool,
@@ -82,13 +81,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::process::exit(1);
     }
 
-    let rom_buffer = parse_rom(args.rom);
+    let rom_buffer = parse_rom(&args.rom);
 
     let mut sdl_display = SDLContext::new(args.scale, args.vsync)?;
 
     let mut cpu = Cpu::new();
     cpu.load_rom(&rom_buffer)?;
-    println!("Successfully read {} bytes from ROM", rom_buffer.len());
 
     let mut audio_device = audio::init_audio_device(sdl_display.audio());
     let mut framebuffer = FrameBuffer::new();
@@ -103,7 +101,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         &mut cpu,
         &mut framebuffer,
         &mut audio_device,
-        args.frequency,
+        &args,
     ) {}
 
     Ok(())
@@ -116,7 +114,7 @@ fn program_loop(
     cpu: &mut Cpu,
     framebuffer: &mut FrameBuffer,
     audio_device: &mut AudioDevice<audio::SquareWave>,
-    frequency: u32,
+    args: &Args,
 ) -> bool {
     // EVENT HANDLING
     for event in sdl_display.events().poll_iter() {
@@ -148,9 +146,9 @@ fn program_loop(
     }
 
     // PROGRAM EXECUTION
-    let cpu_interval = Duration::from_secs_f64(1.0 / frequency as f64);
+    let cpu_interval = Duration::from_secs_f64(1.0 / args.frequency as f64);
     while last_cpu_update.elapsed() >= cpu_interval {
-        cpu.step(framebuffer);
+        cpu.step(framebuffer, args.vy);
         *last_cpu_update += cpu_interval;
     }
 
@@ -180,7 +178,7 @@ fn program_loop(
     true
 }
 
-fn parse_rom(arg: String) -> Vec<u8> {
+fn parse_rom(arg: &String) -> Vec<u8> {
     let mut file = File::open(&arg).expect(&format!("Couldn't open {}", arg));
     let mut rom_buffer = Vec::new();
 
