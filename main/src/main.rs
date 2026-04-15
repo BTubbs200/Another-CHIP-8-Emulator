@@ -36,7 +36,7 @@ const KEYMAP: [Keycode; 16] = [
 
 #[derive(Parser, Debug)]
 #[command(name = "ch8")]
-#[command(about = "A CHIP-8 emulator")]
+#[command(about = "A CHIP-8 emulator written in Rust")]
 struct Args {
     /*
     //TODO
@@ -49,32 +49,20 @@ struct Args {
     #[arg(long, default_value_t = 50, value_parser = clap::value_parser!(u32).range(0..=100))]
     volume: u8,
 
-    //TODO
-    /// Set clock frequency in Hz. 1-1000.
-    #[arg(short, long, default_value_t = 600, value_parser = clap::value_parser!(u32).range(1..=1000))]
-    frequency: u32,
-
     // TODO
     /// Enable output logging
     #[arg(short, long, default_value_t = false)]
     log: bool,
-
-    scale:
-    //TODO
-    /// Window width in px. 10-1920
-    #[arg(long, default_value_t = 800, value_parser = clap::value_parser!(u32).range(10..=1920))]
-    width: u32,
-
-    //TODO
-    /// Window height in px. 10-1080
-    #[arg(long, default_value_t = 600, value_parser = clap::value_parser!(u32).range(1..=1080))]
-    height: u32,
 
     //TODO
     /// Addresses an ambiguous instruction. Try enabling if certain programs aren't behaving quite correctly.
     #[arg(long, default_value_t = false)]
     vy: bool,
     */
+    /// Set clock frequency in Hz. 1-1500.
+    #[arg(short, long, default_value_t = 600, value_parser = clap::value_parser!(u32).range(1..=1500))]
+    frequency: u32,
+
     /// Specify scaling for the 64x32 emulation window
     #[arg(long, default_value_t = 10, value_parser = clap::value_parser!(u32).range(1..=30))]
     scale: u32,
@@ -116,6 +104,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         &mut cpu,
         &mut framebuffer,
         &mut audio_device,
+        args.frequency,
     ) {}
 
     Ok(())
@@ -128,6 +117,7 @@ fn program_loop(
     cpu: &mut Cpu,
     framebuffer: &mut FrameBuffer,
     audio_device: &mut AudioDevice<audio::SquareWave>,
+    frequency: u32,
 ) -> bool {
     // EVENT HANDLING
     for event in sdl_display.events().poll_iter() {
@@ -159,7 +149,7 @@ fn program_loop(
     }
 
     // PROGRAM EXECUTION
-    let cpu_interval = Duration::from_secs_f64(1.0 / 600.0); // 600 Hz
+    let cpu_interval = Duration::from_secs_f64(1.0 / frequency as f64);
     while last_cpu_update.elapsed() >= cpu_interval {
         cpu.step(framebuffer);
         *last_cpu_update += cpu_interval;
