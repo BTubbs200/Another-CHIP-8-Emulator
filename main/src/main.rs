@@ -59,6 +59,7 @@ struct Args {
     #[arg(short, long, default_value_t = false)]
     log: bool,
 
+    scale:
     //TODO
     /// Window width in px. 10-1920
     #[arg(long, default_value_t = 800, value_parser = clap::value_parser!(u32).range(10..=1920))]
@@ -74,6 +75,10 @@ struct Args {
     #[arg(long, default_value_t = false)]
     vy: bool,
     */
+    /// Specify scaling for the 64x32 emulation window
+    #[arg(long, default_value_t = 10, value_parser = clap::value_parser!(u32).range(1..=30))]
+    scale: u32,
+
     #[arg(required = true, value_name = "Path to ROM")]
     rom: String,
 }
@@ -92,7 +97,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let rom_buffer = parse_rom(args.rom);
 
-    let mut sdl_display = SDLContext::new()?;
+    let mut sdl_display = SDLContext::new(args.scale)?;
 
     let mut cpu = Cpu::new();
     cpu.load_rom(&rom_buffer)?;
@@ -124,6 +129,7 @@ fn program_loop(
     framebuffer: &mut FrameBuffer,
     audio_device: &mut AudioDevice<audio::SquareWave>,
 ) -> bool {
+    // EVENT HANDLING
     for event in sdl_display.events().poll_iter() {
         match event {
             Event::Quit { .. } => return false,
