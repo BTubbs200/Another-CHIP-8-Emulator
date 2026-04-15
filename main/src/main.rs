@@ -189,6 +189,7 @@ fn program_loop(
         *last_cpu_update += cpu_interval;
     }
 
+    // TIMER
     let timer_interval = Duration::from_secs_f64(1.0 / 60.0);
     while last_timer_update.elapsed() >= timer_interval {
         if cpu.delayt_reg > 0 {
@@ -203,8 +204,11 @@ fn program_loop(
     }
 
     // AUDIO
-    let mut audio = audio_device.lock();
-    audio.set_playing(cpu.soundt_reg > 0);
+    if cpu.soundt_reg > 0 {
+        audio_device.resume();
+    } else {
+        audio_device.pause();
+    }
 
     // RENDER
     sdl_display.render(framebuffer);
