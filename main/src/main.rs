@@ -36,69 +36,96 @@ const KEYMAP: [Keycode; 16] = [
 
 #[derive(Parser, Debug)]
 #[command(name = "ch8")]
-#[command(about = "A CHIP-8 emulator")]
+#[command(about = "A CHIP-8 emulator written in Rust")]
 struct Args {
-    /*
-    //TODO
-    /// Enable vertical sync (may help with screen tearing in certain programs)
+    #[arg(required = true, value_name = "Path to ROM")]
+    rom: String,
+
+    /// Verbosity: 0=info, 1=debug, 2=trace
+    #[arg(short, long, action = clap::ArgAction::Count)]
+    verbose: u8,
+
+    #[arg(short, long)]
+    quiet: bool,
+
+    /// Set clock frequency in Hz. 1-1500.
+    #[arg(short, long, default_value_t = 600, value_parser = clap::value_parser!(u32).range(1..=1500))]
+    frequency: u32,
+
+    /// Specify scaling for the 64x32 emulation window
+    #[arg(long, default_value_t = 10, value_parser = clap::value_parser!(u32).range(1..=30))]
+    scale: u32,
+
+    /// 0-100
+    #[arg(long, default_value_t = 50, value_parser = clap::value_parser!(u32).range(0..=100))]
+    volume: u32,
+
+    /// Enable vertical sync [default: off]
     #[arg(long, default_value_t = false)]
     vsync: bool,
 
-    //TODO
-    /// 0-100
-    #[arg(long, default_value_t = 50, value_parser = clap::value_parser!(u32).range(0..=100))]
-    volume: u8,
-
-    //TODO
-    /// Set clock frequency in Hz. 1-1000.
-    #[arg(short, long, default_value_t = 600, value_parser = clap::value_parser!(u32).range(1..=1000))]
-    frequency: u32,
-
-    // TODO
-    /// Enable output logging
-    #[arg(short, long, default_value_t = false)]
-    log: bool,
-
-    //TODO
-    /// Window width in px. 10-1920
-    #[arg(long, default_value_t = 800, value_parser = clap::value_parser!(u32).range(10..=1920))]
-    width: u32,
-
-    //TODO
-    /// Window height in px. 10-1080
-    #[arg(long, default_value_t = 600, value_parser = clap::value_parser!(u32).range(1..=1080))]
-    height: u32,
-
-    //TODO
-    /// Addresses an ambiguous instruction. Try enabling if certain programs aren't behaving quite correctly.
-    #[arg(long, default_value_t = false)]
+    /// Addresses an ambiguous program instruction. Try disabling if a program isn't behaving correctly. [default: enabled]
+    #[arg(long, default_value_t = true)]
     vy: bool,
-    */
-    #[arg(required = true, value_name = "Path to ROM")]
-    rom: String,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
 
+    let log_level = if args.quiet {
+        "error"
+    } else {
+        match args.verbose {
+            0 => "info",
+            1 => "debug",
+            _ => "trace",
+        }
+    };
+
+    // Initialize env_logger, but let RUST_LOG override if set
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(log_level)).init();
+
+    log::debug!(
+        "Initializing emulator with following parameters: {:?}",
+        args,
+    );
+
     let rom_path = Path::new(&args.rom);
     if !rom_path.exists() {
-        eprintln!("ROM path does not exist");
+        log::error!("ROM path does not exist.");
         std::process::exit(1);
     } else if !rom_path.is_file() {
-        eprintln!("ROM path is not a file");
+        log::error!("ROM path is not a file.");
         std::process::exit(1);
     }
 
-    let rom_buffer = parse_rom(args.rom);
+    log::info!("Emulator starting...");
 
-    let mut sdl_display = SDLContext::new()?;
+    let rom_buffer = parse_rom(&args.rom);
+    log::info!("ROM loaded successfully: {} bytes", rom_buffer.len());
+
+    let mut sdl_display = SDLContext::new(args.scale, args.vsync)?;
+    log::info!(
+        "Initialized emulation window of size {}x{}",
+        64 * args.scale,
+        32 * args.scale
+    );
+
+    if args.frequency < 1000 {
+        log::info!("Emulator frequency: {} Hz", args.frequency)
+    } else {
+        log::info!(
+            "Emulator frequency: {} kHz",
+            (args.frequency as f32 / 1000.0)
+        )
+    }
+
+    log::info!("Volume: {}", args.volume);
 
     let mut cpu = Cpu::new();
     cpu.load_rom(&rom_buffer)?;
-    println!("Successfully read {} bytes from ROM", rom_buffer.len());
 
-    let mut audio_device = audio::init_audio_device(sdl_display.audio());
+    let mut audio_device = audio::init_audio_device(sdl_display.audio(), args.volume);
     let mut framebuffer = FrameBuffer::new();
 
     let mut last_timer_update = Instant::now();
@@ -111,6 +138,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         &mut cpu,
         &mut framebuffer,
         &mut audio_device,
+        &args,
     ) {}
 
     Ok(())
@@ -123,7 +151,9 @@ fn program_loop(
     cpu: &mut Cpu,
     framebuffer: &mut FrameBuffer,
     audio_device: &mut AudioDevice<audio::SquareWave>,
+    args: &Args,
 ) -> bool {
+    // EVENT HANDLING
     for event in sdl_display.events().poll_iter() {
         match event {
             Event::Quit { .. } => return false,
@@ -153,12 +183,13 @@ fn program_loop(
     }
 
     // PROGRAM EXECUTION
-    let cpu_interval = Duration::from_secs_f64(1.0 / 600.0); // 600 Hz
+    let cpu_interval = Duration::from_secs_f64(1.0 / args.frequency as f64);
     while last_cpu_update.elapsed() >= cpu_interval {
-        cpu.step(framebuffer);
+        cpu.step(framebuffer, args.vy);
         *last_cpu_update += cpu_interval;
     }
 
+    // TIMER
     let timer_interval = Duration::from_secs_f64(1.0 / 60.0);
     while last_timer_update.elapsed() >= timer_interval {
         if cpu.delayt_reg > 0 {
@@ -173,24 +204,27 @@ fn program_loop(
     }
 
     // AUDIO
-    let mut audio = audio_device.lock();
-    audio.set_playing(cpu.soundt_reg > 0);
+    if cpu.soundt_reg > 0 {
+        audio_device.resume();
+    } else {
+        audio_device.pause();
+    }
 
     // RENDER
     sdl_display.render(framebuffer);
     framebuffer.draw_flag = false;
 
-    std::thread::sleep(Duration::from_millis(1)); // Help prevent weird user CPU spikes
+    std::thread::sleep(Duration::from_millis(1)); // Help manage CPU usage
 
     true
 }
 
-fn parse_rom(arg: String) -> Vec<u8> {
-    let mut file = File::open(&arg).expect(&format!("Couldn't open {}", arg));
+fn parse_rom(arg: &str) -> Vec<u8> {
+    let mut file = File::open(arg).expect("Couldn't open ROM file.\n");
     let mut rom_buffer = Vec::new();
 
     file.read_to_end(&mut rom_buffer)
-        .expect("Failed to read file.\n");
+        .expect("Failed to read ROM file.\n");
 
     rom_buffer
 }
