@@ -43,17 +43,19 @@ struct Args {
     /// 0-100
     #[arg(long, default_value_t = 50, value_parser = clap::value_parser!(u32).range(0..=100))]
     volume: u8,
-
-    // TODO
-    /// Enable output logging
-    #[arg(short, long, default_value_t = false)]
-    log: bool,
     */
-    /// Addresses an ambiguous instruction. Try disabling if certain programs aren't behaving correctly.
+    /// Verbosity: 0=info, 1=debug, 2=trace
+    #[arg(short, long, action = clap::ArgAction::Count)]
+    verbose: u8,
+
+    #[arg(short, long)]
+    quiet: bool,
+
+    /// Address an ambiguous program instruction. Try disabling if a program isn't behaving correctly. [default: enabled]
     #[arg(long, default_value_t = true)]
     vy: bool,
 
-    /// Enable vertical sync (may help with display issues in certain programs)
+    /// Enable vertical sync [default: off]
     #[arg(long, default_value_t = false)]
     vsync: bool,
 
@@ -72,18 +74,53 @@ struct Args {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
 
+    let log_level = if args.quiet {
+        "error"
+    } else {
+        match args.verbose {
+            0 => "info",
+            1 => "debug",
+            _ => "trace",
+        }
+    };
+
+    // Initialize env_logger, but let RUST_LOG override if set
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(log_level)).init();
+
+    log::debug!(
+        "Initializing emulator with following parameters: {:?}",
+        args,
+    );
+
     let rom_path = Path::new(&args.rom);
     if !rom_path.exists() {
-        eprintln!("ROM path does not exist");
+        log::error!("ROM path does not exist.");
         std::process::exit(1);
     } else if !rom_path.is_file() {
-        eprintln!("ROM path is not a file");
+        log::error!("ROM path is not a file.");
         std::process::exit(1);
     }
 
+    log::info!("Emulator starting...");
+
     let rom_buffer = parse_rom(&args.rom);
+    log::info!("ROM loaded successfully: {} bytes", rom_buffer.len());
 
     let mut sdl_display = SDLContext::new(args.scale, args.vsync)?;
+    log::info!(
+        "Initialized emulation window of size {}x{}",
+        64 * args.scale,
+        32 * args.scale
+    );
+
+    if args.frequency < 1000 {
+        log::info!("Emulator running at frequency of {} Hz", args.frequency)
+    } else {
+        log::info!(
+            "Emulator running at frequency of {} kHz",
+            (args.frequency as f32 / 1000.0)
+        )
+    }
 
     let mut cpu = Cpu::new();
     cpu.load_rom(&rom_buffer)?;
@@ -173,17 +210,17 @@ fn program_loop(
     sdl_display.render(framebuffer);
     framebuffer.draw_flag = false;
 
-    std::thread::sleep(Duration::from_millis(1)); // Help prevent weird user CPU spikes
+    std::thread::sleep(Duration::from_millis(1)); // Help manage CPU usage
 
     true
 }
 
-fn parse_rom(arg: &String) -> Vec<u8> {
-    let mut file = File::open(&arg).expect(&format!("Couldn't open {}", arg));
+fn parse_rom(arg: &str) -> Vec<u8> {
+    let mut file = File::open(arg).expect("Couldn't open ROM file.\n");
     let mut rom_buffer = Vec::new();
 
     file.read_to_end(&mut rom_buffer)
-        .expect("Failed to read file.\n");
+        .expect("Failed to read ROM file.\n");
 
     rom_buffer
 }
