@@ -94,8 +94,9 @@ impl Cpu {
         let opcode = self.fetch();
         self.execute(opcode, framebuffer, vy);
 
-        // Bunch of debug stuff, remove later
         log::trace!("executed {:#X}", opcode);
+
+        // Should I include these in trace or would I be a madman?
         /*
         println!("v_regs:\n{:#?}", self.v_regs);
         println!("stack: {:#?}", self.stack);

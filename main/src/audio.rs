@@ -35,7 +35,10 @@ impl AudioCallback for SquareWave {
     }
 }
 
-pub fn init_audio_device(audio_subsystem: &sdl2::AudioSubsystem) -> AudioDevice<SquareWave> {
+pub fn init_audio_device(
+    audio_subsystem: &sdl2::AudioSubsystem,
+    volume: u32,
+) -> AudioDevice<SquareWave> {
     let desired_spec = AudioSpecDesired {
         freq: Some(44100),
         channels: Some(1),
@@ -46,7 +49,8 @@ pub fn init_audio_device(audio_subsystem: &sdl2::AudioSubsystem) -> AudioDevice<
         .open_playback(None, &desired_spec, |spec| SquareWave {
             phase_inc: 440.0 / spec.freq as f32,
             phase: 0.0,
-            volume: 0.05,
+            // TODO: volume arg divided by 1000
+            volume: volume as f32 / 1000.0,
             playing: false,
         })
         .unwrap();

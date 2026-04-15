@@ -38,12 +38,10 @@ const KEYMAP: [Keycode; 16] = [
 #[command(name = "ch8")]
 #[command(about = "A CHIP-8 emulator written in Rust")]
 struct Args {
-    /*
-    //TODO
     /// 0-100
     #[arg(long, default_value_t = 50, value_parser = clap::value_parser!(u32).range(0..=100))]
-    volume: u8,
-    */
+    volume: u32,
+
     /// Verbosity: 0=info, 1=debug, 2=trace
     #[arg(short, long, action = clap::ArgAction::Count)]
     verbose: u8,
@@ -122,10 +120,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
     }
 
+    log::info!("Volume: {}", args.volume);
+
     let mut cpu = Cpu::new();
     cpu.load_rom(&rom_buffer)?;
 
-    let mut audio_device = audio::init_audio_device(sdl_display.audio());
+    let mut audio_device = audio::init_audio_device(sdl_display.audio(), args.volume);
     let mut framebuffer = FrameBuffer::new();
 
     let mut last_timer_update = Instant::now();
