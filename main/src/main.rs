@@ -38,9 +38,8 @@ const KEYMAP: [Keycode; 16] = [
 #[command(name = "ch8")]
 #[command(about = "A CHIP-8 emulator written in Rust")]
 struct Args {
-    /// 0-100
-    #[arg(long, default_value_t = 50, value_parser = clap::value_parser!(u32).range(0..=100))]
-    volume: u32,
+    #[arg(required = true, value_name = "Path to ROM")]
+    rom: String,
 
     /// Verbosity: 0=info, 1=debug, 2=trace
     #[arg(short, long, action = clap::ArgAction::Count)]
@@ -48,14 +47,6 @@ struct Args {
 
     #[arg(short, long)]
     quiet: bool,
-
-    /// Address an ambiguous program instruction. Try disabling if a program isn't behaving correctly. [default: enabled]
-    #[arg(long, default_value_t = true)]
-    vy: bool,
-
-    /// Enable vertical sync [default: off]
-    #[arg(long, default_value_t = false)]
-    vsync: bool,
 
     /// Set clock frequency in Hz. 1-1500.
     #[arg(short, long, default_value_t = 600, value_parser = clap::value_parser!(u32).range(1..=1500))]
@@ -65,8 +56,17 @@ struct Args {
     #[arg(long, default_value_t = 10, value_parser = clap::value_parser!(u32).range(1..=30))]
     scale: u32,
 
-    #[arg(required = true, value_name = "Path to ROM")]
-    rom: String,
+    /// 0-100
+    #[arg(long, default_value_t = 50, value_parser = clap::value_parser!(u32).range(0..=100))]
+    volume: u32,
+
+    /// Enable vertical sync [default: off]
+    #[arg(long, default_value_t = false)]
+    vsync: bool,
+
+    /// Addresses an ambiguous program instruction. Try disabling if a program isn't behaving correctly. [default: enabled]
+    #[arg(long, default_value_t = true)]
+    vy: bool,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -112,10 +112,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     if args.frequency < 1000 {
-        log::info!("Emulator running at frequency of {} Hz", args.frequency)
+        log::info!("Emulator frequency: {} Hz", args.frequency)
     } else {
         log::info!(
-            "Emulator running at frequency of {} kHz",
+            "Emulator frequency: {} kHz",
             (args.frequency as f32 / 1000.0)
         )
     }
