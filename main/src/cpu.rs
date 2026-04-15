@@ -95,7 +95,7 @@ impl Cpu {
         self.execute(opcode, framebuffer, vy);
 
         // Bunch of debug stuff, remove later
-        println!("executed {:#X}", opcode);
+        log::trace!("executed {:#X}", opcode);
         /*
         println!("v_regs:\n{:#?}", self.v_regs);
         println!("stack: {:#?}", self.stack);
@@ -134,7 +134,7 @@ impl Cpu {
                     self.sp_reg -= 1;
                     self.pc_reg = self.stack[self.sp_reg as usize];
                 }
-                _ => println!("Encountered unknown 0x00Ex opcode! {:#X}", opcode),
+                _ => log::warn!("Encountered unknown 0x00Ex opcode! {:#X}", opcode),
             },
             0x1000 => {
                 // 1NNN: Jump to address NNN
@@ -219,16 +219,19 @@ impl Cpu {
                     self.v_regs[x] = result;
                     self.v_regs[0xF] = if borrow { 0 } else { 1 };
                 }
-                /// Due to ambiguity, Some programs may break depending on how
-                /// Vy is handled in 8xy6 and 8xyE. This program allows the user to specify
-                /// how Vy is handled, thus allowing for full program compatibility.
+                // Due to ambiguity, Some programs may break depending on how
+                // Vy is handled in 8xy6 and 8xyE. This program allows the user to specify
+                // how Vy is handled, thus allowing for full program compatibility.
                 0x0006 => {
                     // 8xy6: Optionally set Vx = Vy, set VF = least sig. bit of Vx, Vx = Vx / 2
                     let x = Self::grab_x(opcode);
                     // Toggle use of Vy reg in ambiguous instruction
                     if vy {
                         let y = ((opcode & 0x00F0) >> 4) as usize;
-                        self.v_regs[x] = self.v_regs[y]
+                        self.v_regs[x] = self.v_regs[y];
+                        log::trace!("(Vy mode enabled)")
+                    } else {
+                        log::trace!("(Vy mode disabled)")
                     }
                     let least_sig_bit = self.v_regs[x] & 0x1;
                     self.v_regs[x] >>= 1;
@@ -247,13 +250,16 @@ impl Cpu {
                     // Toggle use of Vy reg in ambiguous instruction
                     if vy {
                         let y = ((opcode & 0x00F0) >> 4) as usize;
-                        self.v_regs[x] = self.v_regs[y]
+                        self.v_regs[x] = self.v_regs[y];
+                        log::debug!("(Vy mode enabled)")
+                    } else {
+                        log::trace!("(Vy mode disabled)")
                     }
                     let most_sig_bit = (self.v_regs[x] & 0x80) >> 7;
                     self.v_regs[x] <<= 1;
                     self.v_regs[0xF] = most_sig_bit;
                 }
-                _ => println!("Unrecognized 0x8xxx opcode! {:#X}", opcode),
+                _ => log::warn!("Unrecognized 0x8xxx opcode! {:#X}", opcode),
             },
             0x9000 => {
                 // 9xy0: Skip next instruction if Vx != Vy
@@ -318,7 +324,7 @@ impl Cpu {
                         self.pc_reg += 2;
                     }
                 }
-                _ => println!("Unrecognized 0xExxx opcode! {:#X}", opcode),
+                _ => log::warn!("Unrecognized 0xExxx opcode! {:#X}", opcode),
             },
             0xF000 => match opcode & 0x00FF {
                 0x0007 => {
@@ -369,6 +375,8 @@ impl Cpu {
                         panic!("Index out of bounds! {:#X}", opcode);
                     }
                 }
+                // TODO: add an arg to address ambiguity with how index register is handled here.
+                // https://tobiasvl.github.io/blog/write-a-chip-8-emulator/#fx55-and-fx65-store-and-load-memory
                 0x0055 => {
                     // Fx55: Store V0 - Vx regs in memory starting at index location
                     let x = Self::grab_x(opcode);
@@ -387,9 +395,9 @@ impl Cpu {
                         self.v_regs[j] = self.memory[index_loc + j];
                     }
                 }
-                _ => println!("Unrecognized 0xFxxx opcode! {:#X}", opcode),
+                _ => log::warn!("Unrecognized 0xFxxx opcode! {:#X}", opcode),
             },
-            _ => println!("Unrecognized opcode! {:#X}", opcode),
+            _ => log::warn!("Unrecognized opcode! {:#X}", opcode),
         }
     }
 
@@ -414,7 +422,7 @@ impl Cpu {
     pub fn load_rom(&mut self, rom_buffer: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
         let rom_size = rom_buffer.len();
 
-        // TODO: custom error
+        // TODO: custom error or figure out better way to do this.
         if rom_size > (4096 - 512) {
             return Err(format!(
                 "ROM too large. Maximum of 3584 bytes, current file is {} bytes",
