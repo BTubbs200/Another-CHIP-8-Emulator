@@ -18,7 +18,7 @@ pub struct SDLContext {
 }
 
 impl SDLContext {
-    pub fn new(window_scale: u32) -> Result<Self, Box<dyn Error>> {
+    pub fn new(window_scale: u32, vsync: bool) -> Result<Self, Box<dyn Error>> {
         let sdl = sdl2::init()?;
 
         let video = sdl.video()?;
@@ -36,12 +36,12 @@ impl SDLContext {
             .build()
             .map_err(|e| e.to_string())?;
 
-        let canvas = window
-            .into_canvas()
-            // TODO: toggle vsync
-            .present_vsync()
-            .build()
-            .map_err(|e| e.to_string())?;
+        // Initialize canvas but let builder give a conditional for vsync first, based on user input
+        let mut builder = window.into_canvas();
+        if vsync {
+            builder = builder.present_vsync();
+        }
+        let canvas = builder.build().map_err(|e| e.to_string())?;
 
         Ok(Self {
             video,

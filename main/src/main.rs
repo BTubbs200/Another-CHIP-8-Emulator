@@ -40,11 +40,6 @@ const KEYMAP: [Keycode; 16] = [
 struct Args {
     /*
     //TODO
-    /// Enable vertical sync (may help with screen tearing in certain programs)
-    #[arg(long, default_value_t = false)]
-    vsync: bool,
-
-    //TODO
     /// 0-100
     #[arg(long, default_value_t = 50, value_parser = clap::value_parser!(u32).range(0..=100))]
     volume: u8,
@@ -59,6 +54,10 @@ struct Args {
     #[arg(long, default_value_t = false)]
     vy: bool,
     */
+    /// Enable vertical sync (may help with display issues in certain programs)
+    #[arg(long, default_value_t = false)]
+    vsync: bool,
+
     /// Set clock frequency in Hz. 1-1500.
     #[arg(short, long, default_value_t = 600, value_parser = clap::value_parser!(u32).range(1..=1500))]
     frequency: u32,
@@ -85,7 +84,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let rom_buffer = parse_rom(args.rom);
 
-    let mut sdl_display = SDLContext::new(args.scale)?;
+    let mut sdl_display = SDLContext::new(args.scale, args.vsync)?;
 
     let mut cpu = Cpu::new();
     cpu.load_rom(&rom_buffer)?;
