@@ -49,4 +49,4 @@ If Rust Analyzer isn't playing nicely, you can try adding this to your IDE's *se
 	    "CMAKE_POLICY_VERSION_MINIMUM": "3.5"
      }
 # Collaboration
-Feel free to create issues and pull requests, I am always open to consider learning something and improving the program.
+Feel free to open issues or submit pull requests. I’m always open to learning and improving the program.
