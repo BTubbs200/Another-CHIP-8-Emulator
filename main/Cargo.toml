@@ -3,6 +3,14 @@ name = "ch8"
 version = "0.1.0"
 edition = "2021"
 
+authors = ["BTubbs200"]
+description = "A complete Chip-8 emulator written in Rust."
+license = "GPL-3.0-or-later"
+
+repository = "https://github.com/BTubbs200/Another-CHIP-8-Emulator"
+documentation = "https://github.com/BTubbs200/Another-CHIP-8-Emulator#readme"
+readme = "README.md"
+
 [dependencies]
 clap = { version = "4.6.1", features = ["derive"] }
 rand = "0.10.1"

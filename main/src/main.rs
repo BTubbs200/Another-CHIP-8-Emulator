@@ -36,7 +36,7 @@ const KEYMAP: [Keycode; 16] = [
 
 #[derive(Parser, Debug)]
 #[command(name = "ch8")]
-#[command(about = "A CHIP-8 emulator written in Rust")]
+#[command(author, version, about, long_about = None)]
 struct Args {
     #[arg(required = true, value_name = "Path to ROM")]
     rom: String,
