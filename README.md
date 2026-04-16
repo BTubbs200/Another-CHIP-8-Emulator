@@ -1,8 +1,8 @@
 
-## Welcome to my Chip-8 emulator! There are many like it, but this one is mine :) 
+## Welcome to my CHIP-8 emulator! There are many like it, but this one is mine :) 
 *Written in Rust.*
 
-This Chip-8 emulator is a complete/near complete representation of the original COSMAC VIP CHIP-8. It runs from the command line with a few options for configuration.
+This Chip-8 emulator is a complete/near complete representation of the original CHIP-8 interpreter that was present on COSMAC VIP and Telmac 1800 systems of the mid 70s. It runs from the command line with a few options for configuration.
 
 <img width="705" height="478" alt="image" src="https://github.com/user-attachments/assets/f33f4b7c-b98e-47f9-9a90-d6e0ba6a5c2f" />
 
