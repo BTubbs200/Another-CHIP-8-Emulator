@@ -204,6 +204,7 @@ fn program_loop(
     }
 
     // AUDIO
+    // TODO: Recent changes fixed audio crackling, but now need to make sure this is still emulator-accurate.
     if cpu.soundt_reg > 0 {
         audio_device.resume();
     } else {
