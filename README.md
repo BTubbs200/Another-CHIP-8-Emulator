@@ -20,7 +20,7 @@ This Chip-8 emulator is a complete/near complete representation of the original 
 
 # Prerequisites
 **Required tools:**
- - Rust (obviously!)
+ - Rust
  - CMake (any version above 4.0 seems to cause problems building SDL2, but workarounds exist.)
  - C Compiler (to compile SDL2) - MSVC, MinGW, etc.
 
