@@ -1,3 +1,4 @@
+
 ## Welcome to my Chip-8 emulator! There are many like it, but this one is mine :) 
 *Written in Rust.*
 
@@ -36,6 +37,12 @@ If you are on CMake 4.x.x you will probably encounter a build error with SDL2 st
 
     $env:CMAKE_POLICY_VERSION_MINIMUM = "3.5"
     cargo build
+
+*Command Prompt*
+
+    set CMAKE_POLICY_VERSION_MINIMUM=3.5
+    cargo build
+
 If Rust Analyzer isn't playing nicely, you can try adding this to your IDE's *settings.json:*
 
     "rust-analyzer.cargo.extraEnv": { 
