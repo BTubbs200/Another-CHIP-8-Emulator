@@ -41,4 +41,5 @@ If Rust Analyzer isn't playing nicely, you can try adding this to your IDE's *se
     "rust-analyzer.cargo.extraEnv": { 
 	    "CMAKE_POLICY_VERSION_MINIMUM": "3.5"
      }
-
+# Collaboration
+Feel free to create issues and pull requests, I am always open to consider learning something and improving the program.
